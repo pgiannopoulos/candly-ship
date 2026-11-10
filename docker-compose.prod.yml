@@ -1,0 +1,38 @@
+# Production: app + Postgres. The app listens ONLY on 127.0.0.1:${APP_PORT:-3100};
+# the host's nginx terminates HTTPS for ship.candly.gr and proxies to it.
+#
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+name: candly-ship
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: candly
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: candly_ship
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U candly -d candly_ship"]
+      interval: 5s
+      retries: 10
+    # no published port: only the app container can reach the database
+
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://candly:${POSTGRES_PASSWORD}@db:5432/candly_ship
+      NODE_ENV: production
+    ports:
+      - "127.0.0.1:${APP_PORT:-3100}:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:

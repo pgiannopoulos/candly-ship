@@ -70,35 +70,36 @@ All of these go into **Ρυθμίσεις** (Settings) in the app. No code chang
 
 You don't need to create webhooks by hand. The app registers `orders/create`, `orders/updated` and `orders/cancelled` itself when it starts.
 
-### 3.2 Server (VPS + Docker)
+### 3.2 Server (existing Linux server with nginx + Docker)
 
-Any small Linux VPS works (1 vCPU / 1–2 GB RAM is plenty, e.g. Hetzner or DigitalOcean).
+The app and its own Postgres run in Docker (`docker-compose.prod.yml`) and listen **only on `127.0.0.1:3100`**. The server's nginx serves `ship.candly.gr` over HTTPS (certbot) and proxies to it, so it can share a server with other sites.
 
 ```bash
-# 1. DNS: create an A record  ship.candly.gr → <server IP>
-# 2. On the server:
-curl -fsSL https://get.docker.com | sh
-git clone <this repo> candly-ship && cd candly-ship
-cp .env.example .env
+# 1. DNS (papaki): A record  ship → <server IPv4>   (+ AAAA if the server has IPv6)
 
-# 3. Generate secrets
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"   # → APP_SECRET
-npm i bcryptjs && npm run hash-password -- "a-strong-password"           # → ADMIN_PASSWORD_HASH
-#    (or run hash-password on your PC and paste the result)
+# 2. Code
+sudo mkdir -p /opt/candly-ship && sudo chown $USER /opt/candly-ship
+git clone https://github.com/pgiannopoulos/candly-ship.git /opt/candly-ship
+cd /opt/candly-ship && cp .env.example .env && chmod 600 .env
 
-# 4. Fill .env: APP_URL=https://ship.candly.gr, POSTGRES_PASSWORD, Shopify vars,
-#    GT_API_HOST, GT_APPCODE, GT_MOCK=0
+# 3. Fill .env  (APP_URL=https://ship.candly.gr, APP_SECRET, ADMIN_PASSWORD_HASH,
+#    POSTGRES_PASSWORD, Shopify vars, GT_API_HOST=https://login.gtcourier.gr, GT_MOCK=0)
 nano .env
 
-# 5. Start (database + app + HTTPS)
-docker compose --profile prod up -d --build
-docker compose logs -f app        # look for "webhooks: ORDERS_CREATE: created …"
+# 4. Start app + database
+docker compose -f docker-compose.prod.yml up -d --build
+curl -s http://127.0.0.1:3100/api/health        # → {"ok":true}
+
+# 5. nginx + HTTPS
+sudo cp deploy/nginx/ship.candly.gr.conf /etc/nginx/sites-available/ship.candly.gr
+sudo ln -s /etc/nginx/sites-available/ship.candly.gr /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+sudo certbot --nginx -d ship.candly.gr
 ```
 
-If you use a subdomain other than `ship.candly.gr`, edit `Caddyfile`. Caddy gets the HTTPS certificate automatically.
-
-**Updating:** `git pull && docker compose --profile prod up -d --build`
-**Backup:** `docker compose exec db pg_dump -U candly candly_ship > backup.sql`
+**Updating:** `cd /opt/candly-ship && git pull && docker compose -f docker-compose.prod.yml up -d --build`
+**Logs:** `docker compose -f docker-compose.prod.yml logs -f app`
+**Backup:** `docker compose -f docker-compose.prod.yml exec db pg_dump -U candly candly_ship > backup-$(date +%F).sql`
 
 ### 3.3 First login
 
@@ -152,7 +153,7 @@ Creating a voucher twice is safe: if GT already has a voucher for that order num
 ```bash
 npm install
 cp .env.example .env          # set GT_MOCK=1 to work without GT
-npm run db:up                 # Postgres in Docker on localhost:5432
+npm run db:up                 # Postgres in Docker on localhost:5432 (docker-compose.yml = dev only)
 npm run db:push               # create tables
 npm run seed:demo             # 5 demo orders (#1055 fails on purpose)
 npm run dev                   # http://localhost:3000
