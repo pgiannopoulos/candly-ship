@@ -7,3 +7,5 @@ out
 next-env.d.ts
 /storage
 .idea/
+deploy.txt
+.env.backup-*

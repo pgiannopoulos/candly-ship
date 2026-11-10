@@ -5,9 +5,15 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+OLD_PG=""; OLD_SECRET=""
 if [ -f .env ]; then
   read -r -p ".env already exists. Overwrite it? (y/N) " ans
   [ "${ans:-N}" = "y" ] || { echo "Aborted, .env unchanged."; exit 1; }
+  # Keep these: the database was created with this password, and APP_SECRET encrypts the stored GT login.
+  OLD_PG=$(grep -E '^POSTGRES_PASSWORD=' .env | cut -d= -f2- || true)
+  OLD_SECRET=$(grep -E '^APP_SECRET=' .env | cut -d= -f2- || true)
+  cp .env ".env.backup-$(date +%Y%m%d-%H%M%S)"
+  echo "Backup saved. Keeping the existing database password and app secret."
 fi
 
 read -r -s -p "New admin password for the app: " ADMINPW; echo
@@ -26,9 +32,9 @@ HASH=$(docker run --rm -e PW="$ADMINPW" node:22-alpine sh -c \
 umask 077
 {
   echo "APP_URL=https://ship.candly.gr"
-  echo "APP_SECRET=$(openssl rand -hex 32)"
+  echo "APP_SECRET=${OLD_SECRET:-$(openssl rand -hex 32)}"
   echo "ADMIN_PASSWORD_HASH=$HASH"
-  echo "POSTGRES_PASSWORD=$(openssl rand -hex 24)"
+  echo "POSTGRES_PASSWORD=${OLD_PG:-$(openssl rand -hex 24)}"
   echo "SHOPIFY_STORE_DOMAIN=candly-6712.myshopify.com"
   echo "SHOPIFY_API_VERSION=2026-10"
   echo "SHOPIFY_ADMIN_TOKEN="
