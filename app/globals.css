@@ -1,0 +1,71 @@
+@import "tailwindcss";
+
+/* Candly palette — sampled from candly.gr */
+@theme {
+  --color-cream: #fffaf6;
+  --color-sand-50: #f5efeb;
+  --color-sand: #e6dbd3;
+  --color-sand-600: #b9a89c;
+  --color-ink: #2b1519;
+  --color-ink-soft: #6e5a5d;
+  --color-burgundy: #4a1219;
+  --color-burgundy-hover: #6a2430;
+  --color-wine: #8c1d2a;
+  --color-terracotta: #b4532a;
+  --color-terracotta-soft: #f6e4da;
+  --color-forest: #21402f;
+  --color-forest-soft: #e3ece6;
+
+  --font-sans: var(--font-manrope), -apple-system, "Segoe UI", Roboto, sans-serif;
+  --radius-xl: 12px;
+  --radius-2xl: 18px;
+}
+
+:root {
+  color-scheme: light;
+}
+
+html,
+body {
+  background: var(--color-cream);
+  color: var(--color-ink);
+}
+
+body {
+  font-feature-settings: "tnum" 1, "ss01" 1;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--color-terracotta-soft);
+  color: var(--color-burgundy);
+}
+
+/* hairline inputs */
+.field {
+  @apply w-full rounded-xl border border-sand bg-white/70 px-3 py-2 text-sm text-ink outline-none transition
+    placeholder:text-sand-600 focus:border-terracotta focus:bg-white focus:ring-4 focus:ring-terracotta/10;
+}
+.label {
+  @apply mb-1 block text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-soft;
+}
+
+@keyframes slide-in {
+  from { transform: translateX(24px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+@keyframes rise {
+  from { transform: translate(-50%, 16px); opacity: 0; }
+  to { transform: translate(-50%, 0); opacity: 1; }
+}
+@keyframes fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.animate-slide-in { animation: slide-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.animate-rise { animation: rise 0.22s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.animate-fade { animation: fade 0.18s ease-out; }
+
+@media print {
+  .no-print { display: none !important; }
+}

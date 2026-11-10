@@ -1,0 +1,101 @@
+generator client {
+  provider = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum OrderStatus {
+  NEW        // waiting for a voucher
+  VOUCHER    // voucher created at GT
+  PRINTED    // label printed
+  ERROR      // last voucher attempt failed
+  CANCELLED  // cancelled in Shopify
+  SKIPPED    // no shipping needed / fulfilled elsewhere / skipped manually
+}
+
+model Order {
+  id                String      @id @default(cuid())
+  shopifyId         String      @unique // gid://shopify/Order/123
+  name              String      // "#1042"
+  shopifyCreatedAt  DateTime
+  shopifyUpdatedAt  DateTime
+  status            OrderStatus @default(NEW)
+  statusNote        String?
+  financialStatus   String?
+  fulfillmentStatus String?
+  email             String?
+  phone             String?
+  note              String?
+  totalPrice        Decimal     @db.Decimal(10, 2)
+  currency          String      @default("EUR")
+  isCod             Boolean     @default(false)
+  codAmount         Decimal     @db.Decimal(10, 2) @default(0)
+  totalWeightGrams  Int         @default(0)
+  itemCount         Int         @default(0)
+  shippingTitle     String?
+  /// Address exactly as it came from Shopify
+  shippingAddress   Json?
+  /// Admin edits (typo fixes) — overrides shippingAddress when present. Never written back to Shopify.
+  addressOverride   Json?
+  lineItems         Json        // [{name, quantity, sku}]
+  vouchers          Voucher[]
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@index([status, shopifyCreatedAt])
+}
+
+model Voucher {
+  id          String   @id @default(cuid())
+  orderId     String
+  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  gtNr01      String?  // Pegasus record id (nr01) — used for printing/updates
+  voucherNo   String?  // Voucher number (p01) printed on the label
+  pieces      Int
+  weightKg    Decimal  @db.Decimal(10, 3)
+  codAmount   Decimal  @db.Decimal(10, 2) @default(0)
+  notes       String?
+  request     Json     // fields sent to GT (for audit/debug)
+  response    Json?
+  error       String?
+  labelPdf    Bytes?
+  printedAt   DateTime?
+  cancelledAt DateTime?
+  createdAt   DateTime @default(now())
+
+  @@index([orderId])
+}
+
+model GtToken {
+  id           Int      @id @default(1)
+  accessToken  String   // AES-GCM encrypted
+  refreshToken String   // AES-GCM encrypted
+  connectedAt  DateTime @default(now())
+  refreshedAt  DateTime?
+  lastError    String?
+}
+
+model Setting {
+  key   String @id
+  value String
+}
+
+model WebhookEvent {
+  id         String   @id // X-Shopify-Webhook-Id
+  topic      String
+  receivedAt DateTime @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  at        DateTime @default(now())
+  action    String
+  orderId   String?
+  detail    String?
+
+  @@index([at])
+}
