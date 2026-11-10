@@ -35,12 +35,14 @@ Order states in the app:
 
 ## 2. Before you start: what to ask GT Courier
 
-The Pegasus API is generic, so **GT has to give us some codes**. You can send them this (in Greek):
+**Already known:** the GT server is `https://login.gtcourier.gr` (no appcode needed), with the Pegasus user `CANDLY` and code `60000038`. The password is typed only on GT's own login page and is never stored in this app.
+
+The Pegasus API is generic, so **GT still has to confirm some codes**. You can send them this (in Greek):
 
 > Καλησπέρα σας,
 > Συνδέουμε το e-shop μας (candly.gr, Shopify) με το Pegasus Web App σας μέσω του REST API για αυτόματη δημιουργία vouchers. Θα χρειαστούμε:
-> 1. **App code (appcode)** για το REST API και ενεργοποίηση δικαιωμάτων για τον χρήστη μας στα: `courier00/r18` (GET/POST/PUT), `courier00/r14` (GET), `prints/print` (POST).
-> 2. Το **URL του server** του Pegasus σας (π.χ. `https://….gr`), αν διαφέρει από αυτό που έχουμε.
+> 1. Ενεργοποίηση δικαιωμάτων REST API για τον χρήστη μας (CANDLY) στα: `courier00/r18` (GET/POST/PUT), `courier00/r14` (GET), `prints/print` (POST).
+> 2. Ο κωδικός 60000038 που μας δώσατε είναι ο **κωδικός πελάτη (p02)**;
 > 3. Τον **κωδικό πελάτη μας (p02)** και, αν απαιτείται, τον **κωδικό CRM αποστολέα (p0100)** και **υποκατάστημα (p02_1)**.
 > 4. Τον **κωδικό είδους εργασίας (p04)** για κανονική αποστολή δέματος, την **αρχική κατάσταση (p014)** και την τιμή του **p126** για «Αποστολή».
 > 5. Μπορούμε να στέλνουμε τα στοιχεία παραλήπτη inline (p0201–p0210) χωρίς εγγραφή CRM (p0200);
