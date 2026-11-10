@@ -3,8 +3,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const LINKS = [
-  { href: "/orders", label: "Παραγγελίες" },
-  { href: "/settings", label: "Ρυθμίσεις" },
+  { href: "/orders", label: "Παραγγελίες", tip: "Λίστα παραγγελιών, vouchers και εκτυπώσεις" },
+  { href: "/settings", label: "Ρυθμίσεις", tip: "Σύνδεση GT, στοιχεία αποστολέα και προεπιλογές" },
 ];
 
 export function NavLinks() {
@@ -17,6 +17,7 @@ export function NavLinks() {
           <Link
             key={l.href}
             href={l.href}
+            data-tip={l.tip}
             className={`rounded-full px-3 py-1.5 text-sm transition ${
               active ? "bg-burgundy text-cream" : "text-ink-soft hover:bg-sand-50 hover:text-ink"
             }`}

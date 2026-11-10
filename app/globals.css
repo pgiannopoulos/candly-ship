@@ -50,6 +50,80 @@ body {
   @apply mb-1 block text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-soft;
 }
 
+/* Everything clickable shows a pointer (Tailwind v4 resets buttons to the default cursor) */
+button:not(:disabled),
+[role="button"],
+a[href],
+summary,
+select,
+label:has(input[type="checkbox"]),
+input[type="checkbox"]:not(:disabled) {
+  cursor: pointer;
+}
+button:disabled {
+  cursor: not-allowed;
+}
+
+/*
+ * Hover labels: add data-tip="…" to any element.
+ * Placement: below by default · data-tip-pos="top" (e.g. bottom action bar) ·
+ * data-tip-align="end" for elements at the right edge so the label stays on screen.
+ */
+[data-tip] {
+  position: relative;
+}
+[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute;
+  z-index: 60;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translate(-50%, -2px);
+  width: max-content;
+  max-width: 240px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--color-ink);
+  color: var(--color-cream);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.35;
+  letter-spacing: 0;
+  text-transform: none;
+  text-align: left;
+  white-space: normal;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.12s ease, transform 0.12s ease;
+}
+[data-tip]:hover::after,
+[data-tip]:focus-visible::after {
+  opacity: 1;
+  transform: translate(-50%, 0);
+  transition-delay: 0.35s;
+}
+[data-tip][data-tip-pos="top"]::after {
+  top: auto;
+  bottom: calc(100% + 8px);
+}
+[data-tip][data-tip-align="end"]::after {
+  left: auto;
+  right: 0;
+  transform: translateY(-2px);
+}
+[data-tip][data-tip-align="end"]:hover::after,
+[data-tip][data-tip-align="end"]:focus-visible::after {
+  transform: none;
+}
+[data-tip][data-tip-align="start"]::after {
+  left: 0;
+  transform: translateY(-2px);
+}
+[data-tip][data-tip-align="start"]:hover::after,
+[data-tip][data-tip-align="start"]:focus-visible::after {
+  transform: none;
+}
+
 @keyframes slide-in {
   from { transform: translateX(24px); opacity: 0; }
   to { transform: none; opacity: 1; }

@@ -74,12 +74,12 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             </p>
           </div>
           <div className="flex shrink-0 flex-col items-end gap-2">
-            <a href="/api/gt/connect" className="rounded-xl bg-burgundy px-4 py-2 text-sm font-semibold text-cream hover:bg-burgundy-hover">
+            <a href="/api/gt/connect" className="rounded-xl bg-burgundy px-4 py-2 text-sm font-semibold text-cream hover:bg-burgundy-hover" data-tip="Ανοίγει τη σελίδα σύνδεσης του GT (Pegasus). Μετά τη σύνδεση επιστρέφετε εδώ αυτόματα." data-tip-align="end">
               {gt.connected ? "Επανασύνδεση" : "Σύνδεση με GT Courier"}
             </a>
             {gt.connected && (
               <form action={disconnectGt}>
-                <button className="text-xs text-ink-soft hover:text-wine">Αποσύνδεση</button>
+                <button className="text-xs text-ink-soft hover:text-wine" data-tip="Διαγράφει τη σύνδεση με το GT από την εφαρμογή" data-tip-align="end">Αποσύνδεση</button>
               </form>
             )}
           </div>
@@ -131,7 +131,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         </Card>
 
         <div className="flex justify-end">
-          <button className="rounded-xl bg-burgundy px-6 py-2.5 text-sm font-semibold text-cream hover:bg-burgundy-hover">Αποθήκευση</button>
+          <button className="rounded-xl bg-burgundy px-6 py-2.5 text-sm font-semibold text-cream hover:bg-burgundy-hover" data-tip="Αποθηκεύει όλες τις παραπάνω ρυθμίσεις" data-tip-pos="top" data-tip-align="end">Αποθήκευση</button>
         </div>
       </form>
 

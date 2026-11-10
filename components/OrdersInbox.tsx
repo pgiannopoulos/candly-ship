@@ -5,6 +5,13 @@ import { Button, CodPill, StatusBadge, eur, shortDate } from "./ui";
 import { OrderDrawer } from "./OrderDrawer";
 import { printLabels } from "./print";
 
+const TAB_TIPS: Record<Tab, string> = {
+  new: "Παραγγελίες που περιμένουν voucher (και όσες είχαν σφάλμα)",
+  voucher: "Έχουν voucher, η ετικέτα δεν έχει τυπωθεί ακόμα",
+  printed: "Η ετικέτα έχει τυπωθεί — έτοιμες για παραλαβή από το GT",
+  all: "Όλες οι παραγγελίες, μαζί με ακυρωμένες και παραλείψεις",
+};
+
 const TABS: { key: Tab; label: string }[] = [
   { key: "new", label: "Νέες" },
   { key: "voucher", label: "Με voucher" },
@@ -157,7 +164,7 @@ export function OrdersInbox() {
             placeholder="Αναζήτηση…"
             className="field w-64"
           />
-          <Button variant="ghost" onClick={sync} loading={busy === "sync"} title="Συγχρονισμός με Shopify">
+          <Button variant="ghost" onClick={sync} loading={busy === "sync"} aria-label="Συγχρονισμός με Shopify" data-tip="Συγχρονισμός με Shopify: φέρνει τώρα τις νέες ή αλλαγμένες παραγγελίες" data-tip-align="end">
             ↻
           </Button>
         </div>
@@ -169,6 +176,8 @@ export function OrdersInbox() {
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
+            data-tip={TAB_TIPS[t.key]}
+            data-tip-align="start"
             className={`-mb-px border-b-2 pb-3 text-sm transition ${
               tab === t.key ? "border-burgundy font-semibold text-burgundy" : "border-transparent text-ink-soft hover:text-ink"
             }`}
@@ -184,13 +193,15 @@ export function OrdersInbox() {
       {/* List */}
       <div className="overflow-hidden rounded-2xl border border-sand bg-white/50">
         <div className="grid grid-cols-[36px_88px_1fr_1fr_110px_110px_120px] items-center gap-3 border-b border-sand px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-soft">
-          <input
-            type="checkbox"
-            checked={allChecked}
-            onChange={() => setSelected(allChecked ? new Set() : new Set(orders.map((o) => o.id)))}
-            className="h-4 w-4 accent-burgundy"
-            aria-label="Επιλογή όλων"
-          />
+          <label className="flex" data-tip={allChecked ? "Αποεπιλογή όλων" : "Επιλογή όλων των παραγγελιών της λίστας"} data-tip-align="start">
+            <input
+              type="checkbox"
+              checked={allChecked}
+              onChange={() => setSelected(allChecked ? new Set() : new Set(orders.map((o) => o.id)))}
+              className="h-4 w-4 accent-burgundy"
+              aria-label="Επιλογή όλων"
+            />
+          </label>
           <span>Αρ.</span>
           <span>Πελάτης</span>
           <span>Προορισμός</span>
@@ -219,14 +230,20 @@ export function OrdersInbox() {
                 i === cursor ? "bg-sand-50/60 shadow-[inset_2px_0_0_var(--color-terracotta)]" : ""
               } ${selected.has(o.id) ? "bg-terracotta-soft/40" : ""}`}
             >
-              <input
-                type="checkbox"
-                checked={selected.has(o.id)}
+              <label
+                className="flex"
                 onClick={(e) => e.stopPropagation()}
-                onChange={() => toggle(o.id)}
-                className="h-4 w-4 accent-burgundy"
-                aria-label={`Επιλογή ${o.name}`}
-              />
+                data-tip="Επιλογή για μαζική δημιουργία voucher ή εκτύπωση (συντόμευση: x)"
+                data-tip-align="start"
+              >
+                <input
+                  type="checkbox"
+                  checked={selected.has(o.id)}
+                  onChange={() => toggle(o.id)}
+                  className="h-4 w-4 accent-burgundy"
+                  aria-label={`Επιλογή ${o.name}`}
+                />
+              </label>
               <div>
                 <div className="font-bold text-burgundy">{o.name}</div>
                 <div className="text-[11px] text-ink-soft">{shortDate(o.createdAt)}</div>
@@ -265,13 +282,26 @@ export function OrdersInbox() {
       {selected.size > 0 && (
         <div className="animate-rise fixed bottom-6 left-1/2 z-40 flex -translate-x-1/2 items-center gap-2 rounded-2xl border border-sand bg-white/95 p-2 pl-5 shadow-[0_12px_40px_-12px_rgba(42,26,18,0.35)] backdrop-blur">
           <span className="mr-2 text-sm font-semibold">{selected.size} επιλεγμένες</span>
-          <Button onClick={() => createVouchers(canVoucher.map((o) => o.id))} disabled={!canVoucher.length} loading={busy === "voucher"}>
+          <Button
+            onClick={() => createVouchers(canVoucher.map((o) => o.id))}
+            disabled={!canVoucher.length}
+            loading={busy === "voucher"}
+            data-tip-pos="top"
+            data-tip={canVoucher.length ? "Δημιουργεί voucher στο GT Courier για τις επιλεγμένες νέες παραγγελίες (συντόμευση: v)" : "Οι επιλεγμένες παραγγελίες έχουν ήδη voucher"}
+          >
             Δημιουργία vouchers{canVoucher.length ? ` (${canVoucher.length})` : ""}
           </Button>
-          <Button variant="ghost" onClick={() => print(canPrint.map((o) => o.id))} disabled={!canPrint.length} loading={busy === "print"}>
+          <Button
+            variant="ghost"
+            onClick={() => print(canPrint.map((o) => o.id))}
+            disabled={!canPrint.length}
+            loading={busy === "print"}
+            data-tip-pos="top"
+            data-tip={canPrint.length ? "Τυπώνει τις ετικέτες 10×15 των επιλεγμένων σε μία εκτύπωση (συντόμευση: p)" : "Δημιουργήστε πρώτα voucher για να τυπωθεί ετικέτα"}
+          >
             Εκτύπωση ετικετών{canPrint.length ? ` (${canPrint.length})` : ""}
           </Button>
-          <Button variant="quiet" onClick={() => setSelected(new Set())}>
+          <Button variant="quiet" onClick={() => setSelected(new Set())} aria-label="Καθαρισμός επιλογής" data-tip="Καθαρισμός επιλογής" data-tip-pos="top">
             ✕
           </Button>
         </div>

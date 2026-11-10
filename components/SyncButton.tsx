@@ -12,6 +12,8 @@ export function SyncButton() {
       <Button
         variant="ghost"
         loading={busy}
+        data-tip="Φέρνει τώρα τις νέες/αλλαγμένες παραγγελίες από το Shopify και ελέγχει τα webhooks"
+        data-tip-align="end"
         onClick={async () => {
           setBusy(true);
           const r = await fetch("/api/sync", { method: "POST" });

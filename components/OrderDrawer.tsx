@@ -122,7 +122,7 @@ export function OrderDrawer({ id, onClose, onChanged, onPrint, flash }: Props) {
                   {shortDate(o.createdAt)} · {eur(o.total, o.currency)} · {o.shippingTitle ?? "—"}
                 </p>
               </div>
-              <button onClick={onClose} className="rounded-full p-1.5 text-ink-soft hover:bg-sand-50 hover:text-ink" aria-label="Κλείσιμο">
+              <button onClick={onClose} className="rounded-full p-1.5 text-ink-soft hover:bg-sand-50 hover:text-ink" aria-label="Κλείσιμο" data-tip="Κλείσιμο (Esc)" data-tip-align="end">
                 ✕
               </button>
             </div>
@@ -137,11 +137,12 @@ export function OrderDrawer({ id, onClose, onChanged, onPrint, flash }: Props) {
                     {active.printedAt ? `Εκτυπώθηκε ${shortDate(active.printedAt)}` : `Δημιουργήθηκε ${shortDate(active.createdAt)}`}
                   </p>
                   <div className="mt-4 flex gap-2">
-                    <Button onClick={print} loading={busy === "print"} className="!bg-forest hover:!bg-forest/90">
+                    <Button onClick={print} loading={busy === "print"} className="!bg-forest hover:!bg-forest/90" data-tip="Ανοίγει το παράθυρο εκτύπωσης με την ετικέτα 10×15 — επιλέξτε τον θερμικό εκτυπωτή" data-tip-align="start">
                       Εκτύπωση ετικέτας
                     </Button>
                     <Button
                       variant="ghost"
+                      data-tip="Αντιγραφή του αριθμού voucher (π.χ. για tracking στο Shopify)"
                       onClick={() => {
                         navigator.clipboard.writeText(active.voucherNo!);
                         flash({ kind: "info", text: "Αντιγράφηκε" });
@@ -149,7 +150,7 @@ export function OrderDrawer({ id, onClose, onChanged, onPrint, flash }: Props) {
                     >
                       Αντιγραφή
                     </Button>
-                    <Button variant="danger" onClick={cancel} loading={busy === "cancel"} className="ml-auto">
+                    <Button variant="danger" onClick={cancel} loading={busy === "cancel"} className="ml-auto" data-tip="Ακυρώνει το voucher — η παραγγελία επιστρέφει στις Νέες" data-tip-align="end">
                       Ακύρωση
                     </Button>
                   </div>
@@ -165,7 +166,7 @@ export function OrderDrawer({ id, onClose, onChanged, onPrint, flash }: Props) {
                 <div className="mb-2 flex items-center justify-between">
                   <h3 className="label !mb-0">Παραλήπτης {o.addressEdited && <span className="normal-case tracking-normal text-terracotta">· διορθωμένη</span>}</h3>
                   {canCreate && !editing && (
-                    <button onClick={() => setEditing(true)} className="text-xs font-semibold text-terracotta hover:text-burgundy">
+                    <button onClick={() => setEditing(true)} className="text-xs font-semibold text-terracotta hover:text-burgundy" data-tip="Διόρθωση διεύθυνσης/τηλεφώνου μόνο για το voucher — δεν αλλάζει το Shopify" data-tip-align="end">
                       Διόρθωση
                     </button>
                   )}
@@ -182,10 +183,10 @@ export function OrderDrawer({ id, onClose, onChanged, onPrint, flash }: Props) {
                     <Field label="Τηλέφωνο" value={addr.phone ?? ""} onChange={(v) => setAddr({ ...addr, phone: v })} />
                     <p className="text-[11px] text-ink-soft">Η διόρθωση αφορά μόνο το voucher — δεν αλλάζει την παραγγελία στο Shopify.</p>
                     <div className="flex gap-2 pt-1">
-                      <Button onClick={saveAddress} loading={busy === "addr"}>Αποθήκευση</Button>
-                      <Button variant="quiet" onClick={() => { setEditing(false); setAddr(o.address); }}>Άκυρο</Button>
+                      <Button onClick={saveAddress} loading={busy === "addr"} data-tip="Αποθηκεύει τη διορθωμένη διεύθυνση για το voucher" data-tip-pos="top" data-tip-align="start">Αποθήκευση</Button>
+                      <Button variant="quiet" onClick={() => { setEditing(false); setAddr(o.address); }} data-tip="Ακύρωση αλλαγών" data-tip-pos="top">Άκυρο</Button>
                       {o.addressEdited && (
-                        <Button variant="quiet" className="ml-auto" onClick={() => patch({ action: "resetAddress" }).then(() => setEditing(false))}>
+                        <Button variant="quiet" className="ml-auto" onClick={() => patch({ action: "resetAddress" }).then(() => setEditing(false))} data-tip="Επαναφέρει την αρχική διεύθυνση από το Shopify" data-tip-pos="top" data-tip-align="end">
                           Επαναφορά Shopify
                         </Button>
                       )}
@@ -265,15 +266,15 @@ export function OrderDrawer({ id, onClose, onChanged, onPrint, flash }: Props) {
             <div className="flex items-center gap-2 border-t border-sand bg-cream/90 px-7 py-4">
               {canCreate ? (
                 <>
-                  <Button onClick={createVoucher} loading={busy === "voucher"} disabled={editing} className="flex-1 py-3">
+                  <Button onClick={createVoucher} loading={busy === "voucher"} disabled={editing} className="flex-1 py-3" data-tip-pos="top" data-tip={editing ? "Αποθηκεύστε πρώτα τη διόρθωση διεύθυνσης" : "Δημιουργεί το voucher στο GT Courier με τα παραπάνω στοιχεία"}>
                     Δημιουργία voucher
                   </Button>
-                  <Button variant="quiet" onClick={() => patch({ action: "skip" })} title="Δεν χρειάζεται αποστολή">
+                  <Button variant="quiet" onClick={() => patch({ action: "skip" })} data-tip="Δεν χρειάζεται αποστολή (π.χ. παραλαβή από το κατάστημα) — μετακινείται στις «Όλες»" data-tip-pos="top" data-tip-align="end">
                     Παράλειψη
                   </Button>
                 </>
               ) : o.status === "SKIPPED" ? (
-                <Button variant="ghost" onClick={() => patch({ action: "unskip" })} className="flex-1">
+                <Button variant="ghost" onClick={() => patch({ action: "unskip" })} className="flex-1" data-tip="Επιστρέφει την παραγγελία στις Νέες για να δημιουργηθεί voucher" data-tip-pos="top">
                   Επαναφορά στις Νέες
                 </Button>
               ) : (
