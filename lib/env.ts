@@ -18,6 +18,5 @@ export const env = {
   shopifyConfigured: () => !!process.env.SHOPIFY_STORE_DOMAIN && !!(process.env.SHOPIFY_ADMIN_TOKEN || process.env.SHOPIFY_CLIENT_ID),
 
   gtHost: () => req("GT_API_HOST").replace(/\/$/, ""),
-  gtAppcode: () => process.env.GT_APPCODE || "",
   gtMock: () => process.env.GT_MOCK === "1",
 };

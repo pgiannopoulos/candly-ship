@@ -9,7 +9,7 @@ export function nextStatus(
   o: Pick<ShopifyOrder, "cancelledAt" | "requiresShipping" | "displayFulfillmentStatus" | "shippingAddress">,
   current: OrderStatus | null,
 ): { status: OrderStatus; note: string | null } | null {
-  const hasVoucher = current === "VOUCHER" || current === "PRINTED";
+  const hasVoucher = current === "VOUCHER";
   if (o.cancelledAt) {
     return hasVoucher
       ? { status: current!, note: "Ακυρώθηκε στο Shopify — ακυρώστε και το voucher στο GT" }

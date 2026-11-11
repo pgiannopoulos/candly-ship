@@ -1,9 +1,10 @@
-import { Prisma } from "@prisma/client";
+import { Prisma, type Order } from "@prisma/client";
 import { db } from "./db";
 import { audit } from "./audit";
 import { getSettings, type Settings } from "./settings";
-import { mapVoucher, VoucherValidationError } from "./gt/mapVoucher";
-import { createGtVoucher, findGtVoucherByOrder, printGtVoucher, mergePdfs, setGtVoucherStatus } from "./gt/vouchers";
+import { mapVoucher, validateVoucherInput, hasExplicitSender, VoucherValidationError, type AreaCodes } from "./gt/mapVoucher";
+import { resolveArea } from "./gt/areas";
+import { createGtVoucher, findGtVoucherByOrder, setGtVoucherStatus, gtVoucherStatus } from "./gt/vouchers";
 import type { LineItem, ShipAddress } from "./types";
 
 export type VoucherOptions = { pieces?: number; weightKg?: number; codAmount?: number; notes?: string };
@@ -41,21 +42,24 @@ export async function createVoucherForOrder(orderId: string, opts: VoucherOption
 
     let fields: Record<string, string>;
     try {
-      fields = mapVoucher(
-        {
-          orderName: order.name,
-          email: order.email,
-          address,
-          lineItems: order.lineItems as unknown as LineItem[],
-          pieces,
-          weightKg,
-          codAmount,
-          notes,
-        },
-        s,
-      );
+      const input = {
+        orderName: order.name,
+        email: order.email,
+        address,
+        lineItems: order.lineItems as unknown as LineItem[],
+        pieces,
+        weightKg,
+        codAmount,
+        notes,
+      };
+      // Check the address first, so a typo is reported before asking GT about areas
+      const errs = validateVoucherInput(input);
+      if (errs.length) throw new VoucherValidationError(errs.join(" · "));
+      const recipientArea = await recipientAreaFor(order, address);
+      const senderArea = hasExplicitSender(s) ? await senderAreaFor(s) : null;
+      fields = mapVoucher({ ...input, recipientArea, senderArea }, s);
     } catch (e) {
-      const msg = e instanceof VoucherValidationError ? e.message : String(e);
+      const msg = e instanceof Error ? e.message : String(e);
       await db.order.update({ where: { id: orderId }, data: { status: "ERROR", statusNote: msg } });
       return { ok: false, orderId, error: msg };
     }
@@ -86,8 +90,6 @@ export async function createVoucherForOrder(orderId: string, opts: VoucherOption
       await db.order.update({ where: { id: orderId }, data: { status: "VOUCHER", statusNote: null } });
       await audit(existing ? "voucher.adopted" : "voucher.created", `${order.name} → ${created.voucherNo}`, orderId);
 
-      // Pre-fetch the label so printing is instant (non-fatal)
-      fetchAndStoreLabel(v.id, s).catch(() => {});
       return { ok: true, orderId, voucherId: v.id, voucherNo: created.voucherNo, adopted: !!existing };
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -102,46 +104,63 @@ export async function createVoucherForOrder(orderId: string, opts: VoucherOption
   }
 }
 
-async function fetchAndStoreLabel(voucherId: string, s?: Settings) {
-  const settings = s ?? (await getSettings());
-  const v = await db.voucher.findUniqueOrThrow({ where: { id: voucherId } });
-  if (v.labelPdf) return new Uint8Array(v.labelPdf);
-  if (!v.gtNr01) throw new Error("Το voucher δεν έχει κωδικό GT");
-  const pdf = await printGtVoucher(v.gtNr01, settings.gtPrintTable, settings.gtPrintForm || undefined);
-  await db.voucher.update({ where: { id: voucherId }, data: { labelPdf: Buffer.from(pdf) } });
-  return pdf;
+/** The recipient's GT area: the one chosen in the order, or picked automatically from postcode + city. */
+async function recipientAreaFor(order: Order, address: ShipAddress): Promise<AreaCodes> {
+  const zip = address.zip.replace(/\s/g, "");
+  if (order.gtAreaCode && order.gtZoneCode && order.gtAreaZip === zip) return { code: order.gtAreaCode, zone: order.gtZoneCode };
+  const { options, picked } = await resolveArea(zip, address.city, (address.countryCode || "GR").toUpperCase());
+  if (!options.length) throw new VoucherValidationError(`Ο ΤΚ ${zip} δεν βρέθηκε στο GT — ελέγξτε τον ΤΚ`);
+  if (!picked)
+    throw new VoucherValidationError(
+      `Ο ΤΚ ${zip} ανήκει σε περισσότερες περιοχές GT (${options.map((o) => o.name).join(", ")}) — επιλέξτε «Περιοχή GT» στην παραγγελία`,
+    );
+  await db.order.update({
+    where: { id: order.id },
+    data: { gtAreaCode: picked.code, gtZoneCode: picked.zone, gtAreaName: picked.name, gtAreaZip: zip },
+  });
+  return { code: picked.code, zone: picked.zone };
 }
 
-/** Returns one PDF with the labels of all given orders (in order) and marks them printed. */
-export async function labelsForOrders(orderIds: string[]): Promise<{ pdf: Uint8Array; missing: string[] }> {
-  const settings = await getSettings();
-  const pdfs: Uint8Array[] = [];
-  const missing: string[] = [];
-  for (const id of orderIds) {
-    const v = await db.voucher.findFirst({
-      where: { orderId: id, error: null, cancelledAt: null, gtNr01: { not: null } },
-      orderBy: { createdAt: "desc" },
-      include: { order: { select: { name: true } } },
-    });
-    if (!v) {
-      missing.push(id);
-      continue;
-    }
-    pdfs.push(await fetchAndStoreLabel(v.id, settings));
-    await db.voucher.update({ where: { id: v.id }, data: { printedAt: new Date() } });
-    await db.order.update({ where: { id }, data: { status: "PRINTED" } });
-  }
-  if (!pdfs.length) throw new Error("Δεν βρέθηκαν vouchers για εκτύπωση");
-  await audit("labels.printed", `${pdfs.length} ετικέτες`);
-  return { pdf: pdfs.length === 1 ? pdfs[0] : await mergePdfs(pdfs), missing };
+async function senderAreaFor(s: Settings): Promise<AreaCodes> {
+  const { options, picked } = await resolveArea(s.senderPostcode, s.senderArea);
+  if (!picked)
+    throw new VoucherValidationError(
+      options.length
+        ? `Ο ΤΚ αποστολέα ανήκει σε πολλές περιοχές GT (${options.map((o) => o.name).join(", ")}) — γράψτε μία από αυτές στο «Περιοχή» του αποστολέα στις Ρυθμίσεις`
+        : "Ο ΤΚ αποστολέα δεν βρέθηκε στο GT — ελέγξτε τις Ρυθμίσεις",
+    );
+  return { code: picked.code, zone: picked.zone };
 }
 
-/** Cancel locally (and at GT if a cancel status code is configured). Order returns to "Νέες". */
-export async function cancelVoucher(orderId: string, gtCancelStatus?: string) {
+/**
+ * What happened at GT when cancelling:
+ *  cancelled = GT now reports the cancel status · ignored = GT accepted the request but the status did not change
+ *  gone = GT no longer has the voucher · failed = GT refused (message in `gtError`) · local = no cancel code configured
+ */
+export type CancelOutcome = { gt: "cancelled" | "ignored" | "gone" | "failed" | "local"; gtError?: string };
+
+/** Cancel in the app (always) and try at GT when a cancel status code is configured. Order returns to "Νέες". */
+export async function cancelVoucher(orderId: string, gtCancelStatus?: string): Promise<CancelOutcome> {
   const v = await db.voucher.findFirst({ where: { orderId, error: null, cancelledAt: null }, orderBy: { createdAt: "desc" } });
-  if (!v) return;
-  if (gtCancelStatus && v.gtNr01) await setGtVoucherStatus(v.gtNr01, gtCancelStatus);
+  if (!v) return { gt: "local" };
+
+  let out: CancelOutcome = { gt: "local" };
+  if (gtCancelStatus && v.gtNr01 && v.voucherNo) {
+    try {
+      await setGtVoucherStatus(v.gtNr01, gtCancelStatus);
+    } catch (e) {
+      out = { gt: "failed", gtError: e instanceof Error ? e.message : String(e) };
+    }
+    // GT answers "OK" even when it ignores the status → check what it really reports now
+    const now = await gtVoucherStatus(v.voucherNo).catch(() => undefined);
+    if (now === null) out = { gt: "gone" };
+    else if (now && now.toUpperCase() === gtCancelStatus.toUpperCase()) out = { gt: "cancelled" };
+    else if (out.gt !== "failed") out = { gt: "ignored" };
+  }
+
   await db.voucher.update({ where: { id: v.id }, data: { cancelledAt: new Date() } });
   const o = await db.order.update({ where: { id: orderId }, data: { status: "NEW", statusNote: null } });
-  await audit("voucher.cancelled", `${o.name} (${v.voucherNo})${gtCancelStatus ? "" : " — μόνο τοπικά"}`, orderId);
+  const note = { cancelled: "", gone: " — δεν υπάρχει πλέον στο GT", local: " — μόνο τοπικά", ignored: " — το GT δεν το ακύρωσε", failed: ` — GT: ${out.gtError}` }[out.gt];
+  await audit("voucher.cancelled", `${o.name} (${v.voucherNo})${note}`, orderId);
+  return out;
 }

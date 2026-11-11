@@ -8,11 +8,10 @@ type Props = {
   id: string;
   onClose: () => void;
   onChanged: () => void;
-  onPrint: (id: string) => Promise<void> | void;
   flash: (t: { kind: "ok" | "err" | "info"; text: string }) => void;
 };
 
-export function OrderDrawer({ id, onClose, onChanged, onPrint, flash }: Props) {
+export function OrderDrawer({ id, onClose, onChanged, flash }: Props) {
   const [o, setO] = useState<OrderDetail | null>(null);
   const [editing, setEditing] = useState(false);
   const [addr, setAddr] = useState<ShipAddress | null>(null);
@@ -22,6 +21,7 @@ export function OrderDrawer({ id, onClose, onChanged, onPrint, flash }: Props) {
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [areas, setAreas] = useState<{ options: Area[]; suggested: string | null; error?: string } | null>(null);
 
   const apply = (d: OrderDetail) => {
     setO(d);
@@ -39,6 +39,34 @@ export function OrderDrawer({ id, onClose, onChanged, onPrint, flash }: Props) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [id, onClose]);
+
+  // GT service areas for the recipient postcode (only while a voucher can still be created)
+  const zip = o?.address?.zip ?? "";
+  const city = o?.address?.city ?? "";
+  const open = !!o && (o.status === "NEW" || o.status === "ERROR");
+  useEffect(() => {
+    if (!open || !zip) return setAreas(null);
+    let alive = true;
+    fetch(`/api/gt/areas?zip=${encodeURIComponent(zip)}&city=${encodeURIComponent(city)}&country=${o?.address?.countryCode ?? "GR"}`)
+      .then(async (r) => {
+        const d = await r.json();
+        if (alive) setAreas(r.ok ? d : { options: [], suggested: null, error: d.error });
+      })
+      .catch(() => alive && setAreas({ options: [], suggested: null, error: "Αποτυχία σύνδεσης" }));
+    return () => {
+      alive = false;
+    };
+  }, [open, zip, city, o?.address?.countryCode]);
+
+  async function chooseArea(code: string) {
+    const a = areas?.options.find((x) => x.code === code);
+    if (!a) return;
+    try {
+      await patch({ action: "area", area: { code: a.code, zone: a.zone, name: a.name, zip } });
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
 
   async function patch(body: object) {
     const r = await fetch(`/api/orders/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -69,7 +97,7 @@ export function OrderDrawer({ id, onClose, onChanged, onPrint, flash }: Props) {
     });
     const d = (await r.json()) as { results?: { ok: boolean; error?: string; voucherNo?: string }[]; error?: string };
     const res = d.results?.[0];
-    if (res?.ok) flash({ kind: "ok", text: `Voucher ${res.voucherNo}` });
+    if (res?.ok) flash({ kind: "ok", text: `Το voucher ${res.voucherNo} εκδόθηκε στο GT ✓` });
     else setError(res?.error ?? d.error ?? "Αποτυχία");
     const fresh = await fetch(`/api/orders/${id}`).then((x) => x.json());
     apply(fresh);
@@ -78,20 +106,23 @@ export function OrderDrawer({ id, onClose, onChanged, onPrint, flash }: Props) {
     onChanged();
   }
 
-  async function print() {
-    setBusy("print");
-    await onPrint(id);
-    setBusy(null);
-    setTimeout(() => fetch(`/api/orders/${id}`).then(async (r) => r.ok && apply(await r.json())), 900);
-  }
-
   async function cancel() {
     if (!confirm("Ακύρωση του voucher; Η παραγγελία θα επιστρέψει στις Νέες.")) return;
     setBusy("cancel");
     const r = await fetch("/api/vouchers", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ orderId: id }) });
-    const d = await r.json();
-    if (!r.ok) setError(d.error);
-    else flash({ kind: "info", text: d.gtCancelled ? "Το voucher ακυρώθηκε και στο GT" : "Ακυρώθηκε τοπικά — ακυρώστε το και στο GT" });
+    const d = (await r.json()) as { error?: string; gt?: "cancelled" | "ignored" | "gone" | "failed" | "local"; gtError?: string };
+    if (!r.ok) flash({ kind: "err", text: d.error ?? "Η ακύρωση απέτυχε" });
+    else
+      flash({
+        kind: d.gt === "cancelled" || d.gt === "gone" ? "ok" : "err",
+        text: {
+          cancelled: "Το voucher ακυρώθηκε και στο GT",
+          gone: "Ακυρώθηκε — το voucher δεν υπάρχει πλέον στο GT",
+          ignored: "Ακυρώθηκε στην εφαρμογή, αλλά το GT δεν το ακύρωσε — ακυρώστε το και στο GT",
+          failed: `Ακυρώθηκε στην εφαρμογή — το GT απάντησε: ${d.gtError} — ακυρώστε το και στο GT`,
+          local: "Ακυρώθηκε στην εφαρμογή — ακυρώστε το και στο GT",
+        }[d.gt ?? "local"],
+      });
     const fresh = await fetch(`/api/orders/${id}`).then((x) => x.json());
     apply(fresh);
     setBusy(null);
@@ -131,18 +162,15 @@ export function OrderDrawer({ id, onClose, onChanged, onPrint, flash }: Props) {
               {/* Voucher hero */}
               {active && (
                 <section className="rounded-2xl bg-forest-soft p-5">
-                  <p className="label !text-forest">Voucher GT Courier</p>
+                  <p className="label !text-forest">✓ Εκδόθηκε στο GT Courier</p>
                   <p className="font-mono text-2xl font-bold tracking-wide text-forest">{active.voucherNo}</p>
                   <p className="mt-1 text-xs text-forest/80">
-                    {active.printedAt ? `Εκτυπώθηκε ${shortDate(active.printedAt)}` : `Δημιουργήθηκε ${shortDate(active.createdAt)}`}
+                    {shortDate(active.createdAt)} · το GT θα στείλει με email το voucher της μεταφορικής
                   </p>
                   <div className="mt-4 flex gap-2">
-                    <Button onClick={print} loading={busy === "print"} className="!bg-forest hover:!bg-forest/90" data-tip="Ανοίγει το παράθυρο εκτύπωσης με την ετικέτα 10×15 — επιλέξτε τον θερμικό εκτυπωτή" data-tip-align="start">
-                      Εκτύπωση ετικέτας
-                    </Button>
                     <Button
                       variant="ghost"
-                      data-tip="Αντιγραφή του αριθμού voucher (π.χ. για tracking στο Shopify)"
+                      data-tip="Αντιγραφή του αριθμού voucher του GT" data-tip-align="start"
                       onClick={() => {
                         navigator.clipboard.writeText(active.voucherNo!);
                         flash({ kind: "info", text: "Αντιγράφηκε" });
@@ -150,7 +178,7 @@ export function OrderDrawer({ id, onClose, onChanged, onPrint, flash }: Props) {
                     >
                       Αντιγραφή
                     </Button>
-                    <Button variant="danger" onClick={cancel} loading={busy === "cancel"} className="ml-auto" data-tip="Ακυρώνει το voucher — η παραγγελία επιστρέφει στις Νέες" data-tip-align="end">
+                    <Button variant="danger" onClick={cancel} loading={busy === "cancel"} className="ml-auto" data-tip="Ακυρώνει το voucher στο GT — η παραγγελία επιστρέφει στις Νέες" data-tip-align="end">
                       Ακύρωση
                     </Button>
                   </div>
@@ -222,6 +250,7 @@ export function OrderDrawer({ id, onClose, onChanged, onPrint, flash }: Props) {
               {canCreate && (
                 <section className="space-y-3">
                   <h3 className="label">Αποστολή</h3>
+                  <AreaPicker areas={areas} chosen={o.gtArea?.code ?? null} onChoose={chooseArea} />
                   <div className="grid grid-cols-3 gap-2.5">
                     <NumField label="Τεμάχια" value={pieces} step={1} min={1} onChange={setPieces} />
                     <NumField label="Βάρος (kg)" value={weight} step={0.1} min={0.1} onChange={setWeight} />
@@ -266,8 +295,8 @@ export function OrderDrawer({ id, onClose, onChanged, onPrint, flash }: Props) {
             <div className="flex items-center gap-2 border-t border-sand bg-cream/90 px-7 py-4">
               {canCreate ? (
                 <>
-                  <Button onClick={createVoucher} loading={busy === "voucher"} disabled={editing} className="flex-1 py-3" data-tip-pos="top" data-tip={editing ? "Αποθηκεύστε πρώτα τη διόρθωση διεύθυνσης" : "Δημιουργεί το voucher στο GT Courier με τα παραπάνω στοιχεία"}>
-                    Δημιουργία voucher
+                  <Button onClick={createVoucher} loading={busy === "voucher"} disabled={editing} className="flex-1 py-3" data-tip-pos="top" data-tip={editing ? "Αποθηκεύστε πρώτα τη διόρθωση διεύθυνσης" : "Εκδίδει το voucher στο GT Courier με τα παραπάνω στοιχεία"}>
+                    Έκδοση voucher
                   </Button>
                   <Button variant="quiet" onClick={() => patch({ action: "skip" })} data-tip="Δεν χρειάζεται αποστολή (π.χ. παραλαβή από το κατάστημα) — μετακινείται στις «Όλες»" data-tip-pos="top" data-tip-align="end">
                     Παράλειψη
@@ -286,6 +315,65 @@ export function OrderDrawer({ id, onClose, onChanged, onPrint, flash }: Props) {
           </>
         )}
       </aside>
+    </div>
+  );
+}
+
+type Area = { code: string; zone: string; name: string; generic?: boolean };
+
+/** Recipient service area at GT. Pre-selected from the city; the admin only chooses when the postcode is ambiguous. */
+function AreaPicker({
+  areas, chosen, onChoose,
+}: { areas: { options: Area[]; suggested: string | null; error?: string } | null; chosen: string | null; onChoose: (code: string) => void }) {
+  const label = (
+    <label className="label" data-tip="Η περιοχή εξυπηρέτησης του GT για τον ΤΚ του παραλήπτη — επηρεάζει τη χρέωση και τη δρομολόγηση" data-tip-align="start">
+      Περιοχή GT
+    </label>
+  );
+  if (!areas)
+    return (
+      <div>
+        {label}
+        <p className="flex items-center gap-2 text-sm text-ink-soft"><Spinner className="h-3.5 w-3.5" /> αναζήτηση…</p>
+      </div>
+    );
+  if (areas.error)
+    return (
+      <div>
+        {label}
+        <p className="text-sm text-wine">{areas.error}</p>
+      </div>
+    );
+  if (!areas.options.length)
+    return (
+      <div>
+        {label}
+        <p className="text-sm text-wine">Ο ΤΚ δεν βρέθηκε στο GT — ελέγξτε τον ΤΚ.</p>
+      </div>
+    );
+  const value = chosen ?? areas.suggested ?? "";
+  const needsChoice = !value;
+  return (
+    <div>
+      {label}
+      <select
+        value={value}
+        onChange={(e) => onChoose(e.target.value)}
+        className={`field ${needsChoice ? "!border-terracotta/60 !bg-terracotta-soft/50 text-terracotta" : ""}`}
+      >
+        {needsChoice && <option value="">— επιλέξτε περιοχή —</option>}
+        {areas.options.map((a) => (
+          <option key={a.code} value={a.code}>
+            {a.name}
+            {a.generic ? " (γενική περιοχή)" : ""}
+          </option>
+        ))}
+      </select>
+      {needsChoice ? (
+        <p className="mt-1 text-[11px] text-terracotta">Ο ΤΚ ανήκει σε περισσότερες περιοχές — επιλέξτε τη σωστή.</p>
+      ) : !chosen ? (
+        <p className="mt-1 text-[11px] text-ink-soft">Επιλέχθηκε αυτόματα από την πόλη.</p>
+      ) : null}
     </div>
   );
 }

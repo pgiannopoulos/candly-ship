@@ -1,33 +1,40 @@
 /**
- * Local demo data (development only): `npx tsx scripts/seed-demo.ts`
- * Creates a handful of realistic orders so the UI can be tried without Shopify.
+ * Local test orders (development only):
+ *   npm run seed:demo              → adds TEST-1 … TEST-4 (fake customers) to the inbox
+ *   npm run seed:demo -- --clean   → removes them again (with their vouchers)
+ * Never run against the production database.
  */
 import { PrismaClient, Prisma } from "@prisma/client";
 
 const db = new PrismaClient();
 const now = Date.now();
+const PREFIX = "gid://shopify/Order/demo-";
 
 const demo = [
-  { name: "#1051", who: "Μαρία Παπαδοπούλου", a1: "Λεωφ. Κηφισίας 100", city: "Μαρούσι", zip: "151 24", phone: "+30 694 123 4567", total: 34.9, cod: true, items: [["Melomakarono Soy Candle", 2]] },
-  { name: "#1052", who: "Γιώργος Νικολάου", a1: "Τσιμισκή 45", city: "Θεσσαλονίκη", zip: "546 23", phone: "6971112233", total: 58.0, cod: false, items: [["Kourabies Candle", 1], ["Gift Box", 1]] },
-  { name: "#1053", who: "Ελένη Κωστοπούλου", a1: "Ερμού 12", city: "Πάτρα", zip: "262 21", phone: "+30 698 765 4321", total: 22.5, cod: true, items: [["Vanilla Latte Candle", 1]] },
-  { name: "#1054", who: "Νίκος Δημητρίου", a1: "Πλατεία Ελευθερίας 3", city: "Ηράκλειο", zip: "712 01", phone: "6944556677", total: 79.9, cod: false, items: [["Christmas Collection Set", 1]] },
-  { name: "#1055", who: "FAIL Test Πελάτης", a1: "Αγίου Νικολάου 8", city: "Λάρισα", zip: "412 22", phone: "6900000000", total: 18.0, cod: true, items: [["Mini Candle", 3]] },
+  { name: "TEST-1", who: "TEST Candly Παραλήπτης", a1: "Ερμού 10", city: "Αθήνα", zip: "105 63", phone: "6900000001", total: 25.0, cod: false, items: [["Test Candle", 1]] },
+  { name: "TEST-2", who: "TEST Αντικαταβολή", a1: "Τσιμισκή 45", city: "Θεσσαλονίκη", zip: "546 23", phone: "6900000002", total: 34.9, cod: true, items: [["Test Candle", 2]] },
+  { name: "TEST-3", who: "TEST Διφορούμενη Περιοχή", a1: "Παπάγου 5", city: "Ζωγράφου", zip: "116 33", phone: "6900000003", total: 18.0, cod: false, items: [["Mini Candle", 1]] },
+  { name: "TEST-4", who: "FAIL Test Πελάτης", a1: "Αγίου Νικολάου 8", city: "Λάρισα", zip: "412 22", phone: "6900000004", total: 18.0, cod: true, items: [["Mini Candle", 3]] },
 ] as const;
 
 async function main() {
+  if (process.argv.includes("--clean")) {
+    const r = await db.order.deleteMany({ where: { shopifyId: { startsWith: PREFIX } } });
+    console.log(`Removed ${r.count} test orders`);
+    return;
+  }
   for (const [i, d] of demo.entries()) {
-    const created = new Date(now - (demo.length - i) * 37 * 60_000);
+    const created = new Date(now - (demo.length - i) * 7 * 60_000);
     const lineItems = d.items.map(([name, quantity]) => ({ name, quantity }));
     await db.order.upsert({
-      where: { shopifyId: `gid://shopify/Order/demo-${d.name.slice(1)}` },
+      where: { shopifyId: `${PREFIX}${d.name}` },
       update: {},
       create: {
-        shopifyId: `gid://shopify/Order/demo-${d.name.slice(1)}`,
+        shopifyId: `${PREFIX}${d.name}`,
         name: d.name,
         shopifyCreatedAt: created,
         shopifyUpdatedAt: created,
-        email: `${d.name.slice(1)}@example.com`,
+        email: `${d.name.toLowerCase()}@example.com`,
         totalPrice: new Prisma.Decimal(d.total),
         isCod: d.cod,
         codAmount: new Prisma.Decimal(d.cod ? d.total : 0),
@@ -41,7 +48,7 @@ async function main() {
       },
     });
   }
-  console.log(`Seeded ${demo.length} demo orders`);
+  console.log(`Seeded ${demo.length} test orders (TEST-1 … TEST-${demo.length})`);
 }
 
 main().finally(() => db.$disconnect());

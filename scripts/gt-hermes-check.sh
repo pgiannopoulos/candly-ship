@@ -20,7 +20,7 @@ fi
 echo "Login OK (session received, not shown)."
 
 echo; echo "== 2. Session check (hello)"
-curl -s "$API/pegapi00/hello?sid=$SID"; echo
+curl -s "$API/pegapi00/hello?sid=$SID" | sed 's/"sid":"[^"]*"/"sid":"(hidden)"/'; echo
 
 echo; echo "== 3. Service areas for postcode 11633 (Athens)"
 curl -s "$API/courier/make_zonearea?d23p01=GR&r21p02=11633&sid=$SID"; echo

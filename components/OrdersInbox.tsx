@@ -3,19 +3,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { OrderRow, Tab } from "@/lib/orderDto";
 import { Button, CodPill, StatusBadge, eur, shortDate } from "./ui";
 import { OrderDrawer } from "./OrderDrawer";
-import { printLabels } from "./print";
 
 const TAB_TIPS: Record<Tab, string> = {
   new: "Παραγγελίες που περιμένουν voucher (και όσες είχαν σφάλμα)",
-  voucher: "Έχουν voucher, η ετικέτα δεν έχει τυπωθεί ακόμα",
-  printed: "Η ετικέτα έχει τυπωθεί — έτοιμες για παραλαβή από το GT",
+  voucher: "Το voucher εκδόθηκε στο GT — το GT στέλνει με email το voucher της μεταφορικής",
   all: "Όλες οι παραγγελίες, μαζί με ακυρωμένες και παραλείψεις",
 };
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "new", label: "Νέες" },
-  { key: "voucher", label: "Με voucher" },
-  { key: "printed", label: "Εκτυπωμένες" },
+  { key: "voucher", label: "Εκδόθηκαν" },
   { key: "all", label: "Όλες" },
 ];
 
@@ -25,12 +22,12 @@ export function OrdersInbox() {
   const [tab, setTab] = useState<Tab>("new");
   const [q, setQ] = useState("");
   const [orders, setOrders] = useState<OrderRow[]>([]);
-  const [counts, setCounts] = useState<Record<Tab, number>>({ new: 0, voucher: 0, printed: 0, all: 0 });
+  const [counts, setCounts] = useState<Record<Tab, number>>({ new: 0, voucher: 0, all: 0 });
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [openId, setOpenId] = useState<string | null>(null);
   const [cursor, setCursor] = useState(0);
-  const [busy, setBusy] = useState<null | "voucher" | "print" | "sync">(null);
+  const [busy, setBusy] = useState<null | "voucher" | "sync">(null);
   const [toast, setToast] = useState<Toast>(null);
   const knownNew = useRef<Set<string> | null>(null);
 
@@ -75,7 +72,6 @@ export function OrdersInbox() {
 
   const selectedRows = useMemo(() => orders.filter((o) => selected.has(o.id)), [orders, selected]);
   const canVoucher = selectedRows.filter((o) => o.status === "NEW" || o.status === "ERROR");
-  const canPrint = selectedRows.filter((o) => o.voucherNo);
 
   const toggle = (id: string) =>
     setSelected((s) => {
@@ -93,23 +89,11 @@ export function OrdersInbox() {
     setBusy(null);
     const ok = d.results?.filter((x) => x.ok).length ?? 0;
     const failed = d.results?.filter((x) => !x.ok) ?? [];
-    if (failed.length) flash({ kind: "err", text: `${ok} vouchers δημιουργήθηκαν · ${failed.length} με σφάλμα: ${failed[0].error}` });
-    else if (ok) flash({ kind: "ok", text: ok === 1 ? "Το voucher δημιουργήθηκε" : `${ok} vouchers δημιουργήθηκαν` });
+    if (failed.length) flash({ kind: "err", text: `${ok} vouchers εκδόθηκαν · ${failed.length} με σφάλμα: ${failed[0].error}` });
+    else if (ok) flash({ kind: "ok", text: ok === 1 ? "Το voucher εκδόθηκε στο GT ✓" : `${ok} vouchers εκδόθηκαν στο GT ✓` });
     else flash({ kind: "err", text: d.error ?? "Αποτυχία" });
     setSelected(new Set());
     load(true);
-  }
-
-  async function print(ids: string[]) {
-    setBusy("print");
-    const r = await printLabels(ids);
-    setBusy(null);
-    if (!r.ok) flash({ kind: "err", text: r.error ?? "Η εκτύπωση απέτυχε" });
-    else {
-      flash({ kind: "ok", text: ids.length === 1 ? "Η ετικέτα στάλθηκε για εκτύπωση" : `${ids.length} ετικέτες στάλθηκαν για εκτύπωση` });
-      setSelected(new Set());
-      setTimeout(() => load(true), 800);
-    }
   }
 
   async function sync() {
@@ -121,7 +105,7 @@ export function OrdersInbox() {
     load(true);
   }
 
-  // Keyboard: j/k move · x select · enter open · v voucher · p print · / search
+  // Keyboard: j/k move · x select · enter open · v voucher · / search
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement).tagName;
@@ -137,9 +121,6 @@ export function OrdersInbox() {
       } else if (e.key === "v") {
         const ids = canVoucher.length ? canVoucher.map((o) => o.id) : cur && (cur.status === "NEW" || cur.status === "ERROR") ? [cur.id] : [];
         if (ids.length && !busy) createVouchers(ids);
-      } else if (e.key === "p") {
-        const ids = canPrint.length ? canPrint.map((o) => o.id) : cur?.voucherNo ? [cur.id] : [];
-        if (ids.length && !busy) print(ids);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -233,7 +214,7 @@ export function OrdersInbox() {
               <label
                 className="flex"
                 onClick={(e) => e.stopPropagation()}
-                data-tip="Επιλογή για μαζική δημιουργία voucher ή εκτύπωση (συντόμευση: x)"
+                data-tip="Επιλογή για μαζική έκδοση vouchers (συντόμευση: x)"
                 data-tip-align="start"
               >
                 <input
@@ -275,7 +256,7 @@ export function OrdersInbox() {
       </div>
 
       <p className="no-print mt-4 text-center text-[11px] text-sand-600">
-        <kbd>j</kbd>/<kbd>k</kbd> μετακίνηση · <kbd>x</kbd> επιλογή · <kbd>enter</kbd> άνοιγμα · <kbd>v</kbd> voucher · <kbd>p</kbd> εκτύπωση · <kbd>/</kbd> αναζήτηση
+        <kbd>j</kbd>/<kbd>k</kbd> μετακίνηση · <kbd>x</kbd> επιλογή · <kbd>enter</kbd> άνοιγμα · <kbd>v</kbd> voucher · <kbd>/</kbd> αναζήτηση
       </p>
 
       {/* Floating action bar */}
@@ -287,19 +268,9 @@ export function OrdersInbox() {
             disabled={!canVoucher.length}
             loading={busy === "voucher"}
             data-tip-pos="top"
-            data-tip={canVoucher.length ? "Δημιουργεί voucher στο GT Courier για τις επιλεγμένες νέες παραγγελίες (συντόμευση: v)" : "Οι επιλεγμένες παραγγελίες έχουν ήδη voucher"}
+            data-tip={canVoucher.length ? "Εκδίδει voucher στο GT Courier για τις επιλεγμένες νέες παραγγελίες (συντόμευση: v)" : "Οι επιλεγμένες παραγγελίες έχουν ήδη voucher"}
           >
-            Δημιουργία vouchers{canVoucher.length ? ` (${canVoucher.length})` : ""}
-          </Button>
-          <Button
-            variant="ghost"
-            onClick={() => print(canPrint.map((o) => o.id))}
-            disabled={!canPrint.length}
-            loading={busy === "print"}
-            data-tip-pos="top"
-            data-tip={canPrint.length ? "Τυπώνει τις ετικέτες 10×15 των επιλεγμένων σε μία εκτύπωση (συντόμευση: p)" : "Δημιουργήστε πρώτα voucher για να τυπωθεί ετικέτα"}
-          >
-            Εκτύπωση ετικετών{canPrint.length ? ` (${canPrint.length})` : ""}
+            Έκδοση vouchers{canVoucher.length ? ` (${canVoucher.length})` : ""}
           </Button>
           <Button variant="quiet" onClick={() => setSelected(new Set())} aria-label="Καθαρισμός επιλογής" data-tip="Καθαρισμός επιλογής" data-tip-pos="top">
             ✕
@@ -323,7 +294,6 @@ export function OrdersInbox() {
           id={openId}
           onClose={() => setOpenId(null)}
           onChanged={() => load(true)}
-          onPrint={(id) => print([id])}
           flash={flash}
         />
       )}

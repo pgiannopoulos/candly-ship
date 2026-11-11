@@ -5,22 +5,16 @@ import { db } from "./db";
  * GT codes must be provided by GT Courier — see README "What to ask GT Courier".
  */
 export const SETTING_DEFAULTS = {
-  // GT / Pegasus codes
-  gtCustomerCode: "",        // p02  — Candly's customer code at GT
-  gtSenderCrmCode: "",       // p0100 — sender CRM code (optional if sender sent inline)
-  gtCustomerBranch: "",      // p02_1 — optional
-  gtWorkType: "",            // p04  — work type code (e.g. standard parcel)
-  gtInitialStatus: "",       // p014 — initial status code (leave empty to let GT default)
-  gtShipmentKind: "2",       // p126 — 1=Order / 2=Shipment / 3=Pickup
-  gtCancelStatus: "",        // p014 status code that cancels a voucher (ask GT); empty = cancel only locally
-  gtPrintTable: "",          // tbl  — data-table id of r18 for /prints/print
-  gtPrintForm: "",           // p85  — print form id (10x15 label)
-  gtTrackingUrl: "",         // e.g. https://www.gtcourier.gr/track?voucher={voucher}
-  gtSendSms: "1",            // pdl02 — ask GT to SMS the recipient
-  // Sender (Candly)
+  // GT Hermes codes (all optional — GT applies the account defaults when empty)
+  gtWorkType: "",            // p04  — work type: 001 = sender pays, 002 = recipient pays (empty = GT's first applicable)
+  gtShipmentKind: "2",       // p126 — 1=Order / 2=Send / 3=Receive
+  gtInitialStatus: "",       // p014 — initial status code (empty = GT default)
+  gtSenderCrmCode: "",       // p0100 — sender CRM person/branch id (optional)
+  gtCancelStatus: "",        // p014 status code that cancels a voucher (e.g. AKY); empty = cancel only locally
+  // Sender (Candly) — leave address/postcode empty to use the details of the GT account
   senderName: "Candly",
   senderAddress: "",
-  senderArea: "Αθήνα",
+  senderArea: "",
   senderPostcode: "",
   senderPhone: "",
   senderEmail: "",

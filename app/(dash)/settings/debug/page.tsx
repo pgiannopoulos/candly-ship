@@ -22,11 +22,11 @@ export default async function DebugPage() {
       <Link href="/settings" className="text-xs font-semibold text-terracotta">← Ρυθμίσεις</Link>
       <h1 className="text-2xl font-bold text-burgundy">Διάγνωση GT</h1>
       <p className="max-w-2xl text-sm text-ink-soft">
-        Δημιουργήστε ένα voucher χειροκίνητα στο Pegasus του GT και ανοίξτε αυτή τη σελίδα: εδώ φαίνονται τα πραγματικά πεδία
-        (p02, p04, p014, p0201…) ώστε να επιβεβαιώσουμε τους κωδικούς των Ρυθμίσεων.
+        Τα πραγματικά πεδία των πρόσφατων vouchers του λογαριασμού σας στο GT (p04, p014, p0204…) και οι κωδικοί καταστάσεων — για
+        να επιβεβαιώσουμε τους κωδικούς των Ρυθμίσεων. Το GT δείχνει μόνο vouchers του τελευταίου μήνα.
       </p>
-      <Block title="Τελευταία vouchers — GET /api/courier00/r18/all" r={vouchers} />
-      <Block title="Καταστάσεις — GET /api/courier00/r14" r={statuses} />
+      <Block title="Τελευταία vouchers — GET /hermes_api/courier/r18/all" r={vouchers} />
+      <Block title="Καταστάσεις — GET /hermes_api/courier/r14" r={statuses} />
     </div>
   );
 }

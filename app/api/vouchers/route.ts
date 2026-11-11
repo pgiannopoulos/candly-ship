@@ -38,8 +38,8 @@ export async function DELETE(req: Request) {
   if (!parsed.success) return NextResponse.json({ error: "orderId required" }, { status: 400 });
   try {
     const s = await getSettings();
-    await cancelVoucher(parsed.data.orderId, s.gtCancelStatus || undefined);
-    return NextResponse.json({ ok: true, gtCancelled: !!s.gtCancelStatus });
+    const out = await cancelVoucher(parsed.data.orderId, s.gtCancelStatus || undefined);
+    return NextResponse.json({ ok: true, ...out });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 502 });
   }

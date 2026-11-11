@@ -4,11 +4,10 @@ import type { LineItem, ShipAddress } from "./types";
 import { defaultWeightKg } from "./vouchers";
 import type { Settings } from "./settings";
 
-export type Tab = "new" | "voucher" | "printed" | "all";
+export type Tab = "new" | "voucher" | "all";
 export const TAB_STATUSES: Record<Tab, OrderStatus[] | null> = {
   new: ["NEW", "ERROR"],
   voucher: ["VOUCHER"],
-  printed: ["PRINTED"],
   all: null,
 };
 
@@ -27,7 +26,6 @@ export type OrderRow = {
   isCod: boolean;
   codAmount: number;
   voucherNo: string | null;
-  printedAt: string | null;
 };
 
 export type OrderDetail = OrderRow & {
@@ -40,7 +38,9 @@ export type OrderDetail = OrderRow & {
   addressEdited: boolean;
   lineItems: LineItem[];
   defaults: { pieces: number; weightKg: number };
-  vouchers: { id: string; voucherNo: string | null; createdAt: string; error: string | null; cancelledAt: string | null; printedAt: string | null }[];
+  /** GT area chosen for the current postcode (null = not chosen yet, or chosen for a different postcode) */
+  gtArea: { code: string; zone: string; name: string } | null;
+  vouchers: { id: string; voucherNo: string | null; createdAt: string; error: string | null; cancelledAt: string | null }[];
 };
 
 type WithVouchers = Order & { vouchers: Voucher[] };
@@ -65,13 +65,16 @@ export function toRow(o: WithVouchers): OrderRow {
     isCod: o.isCod,
     codAmount: Number(o.codAmount),
     voucherNo: v?.voucherNo ?? null,
-    printedAt: v?.printedAt?.toISOString() ?? null,
   };
 }
 
 export function toDetail(o: WithVouchers, s: Settings): OrderDetail {
+  const a = (o.addressOverride ?? o.shippingAddress) as ShipAddress | null;
+  const zip = (a?.zip ?? "").replace(/\s/g, "");
   return {
     ...toRow(o),
+    gtArea:
+      o.gtAreaCode && o.gtAreaZip === zip ? { code: o.gtAreaCode, zone: o.gtZoneCode ?? "", name: o.gtAreaName ?? o.gtAreaCode } : null,
     email: o.email,
     phone: o.phone,
     note: o.note,
@@ -87,7 +90,6 @@ export function toDetail(o: WithVouchers, s: Settings): OrderDetail {
       createdAt: v.createdAt.toISOString(),
       error: v.error,
       cancelledAt: v.cancelledAt?.toISOString() ?? null,
-      printedAt: v.printedAt?.toISOString() ?? null,
     })),
   };
 }
@@ -117,7 +119,6 @@ export async function listOrders(tab: Tab, q: string) {
   const counts = {
     new: (c.NEW ?? 0) + (c.ERROR ?? 0),
     voucher: c.VOUCHER ?? 0,
-    printed: c.PRINTED ?? 0,
     all: Object.values(c).reduce((a, b) => a + (b ?? 0), 0),
   };
   return { orders: orders.map(toRow), counts };

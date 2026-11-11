@@ -37,6 +37,10 @@ const Address = z.object({
 const Patch = z.union([
   z.object({ action: z.literal("address"), address: Address }),
   z.object({ action: z.literal("resetAddress") }),
+  z.object({
+    action: z.literal("area"),
+    area: z.object({ code: z.string().min(1), zone: z.string(), name: z.string(), zip: z.string().min(1) }),
+  }),
   z.object({ action: z.literal("skip") }),
   z.object({ action: z.literal("unskip") }),
 ]);
@@ -49,14 +53,18 @@ export async function PATCH(req: Request, { params }: Ctx) {
   const p = parsed.data;
   const order = await db.order.findUniqueOrThrow({ where: { id } });
 
+  const backToNew = order.status === "ERROR" ? { status: "NEW" as const, statusNote: null } : {};
   if (p.action === "address") {
-    await db.order.update({
-      where: { id },
-      data: { addressOverride: p.address as Prisma.InputJsonValue, ...(order.status === "ERROR" ? { status: "NEW", statusNote: null } : {}) },
-    });
+    await db.order.update({ where: { id }, data: { addressOverride: p.address as Prisma.InputJsonValue, ...backToNew } });
     await audit("order.address_edited", order.name, id);
   } else if (p.action === "resetAddress") {
     await db.order.update({ where: { id }, data: { addressOverride: Prisma.DbNull } });
+  } else if (p.action === "area") {
+    const a = p.area;
+    await db.order.update({
+      where: { id },
+      data: { gtAreaCode: a.code, gtZoneCode: a.zone, gtAreaName: a.name, gtAreaZip: a.zip.replace(/\s/g, ""), ...backToNew },
+    });
   } else if (p.action === "skip") {
     await db.order.update({ where: { id }, data: { status: "SKIPPED", statusNote: "Παράλειψη από διαχειριστή" } });
     await audit("order.skipped", order.name, id);

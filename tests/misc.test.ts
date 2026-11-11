@@ -50,8 +50,8 @@ describe("nextStatus", () => {
   it("never reverts a created voucher", () => expect(nextStatus(o, "VOUCHER")).toBeNull());
   it("cancelled before voucher → CANCELLED", () => expect(nextStatus({ ...o, cancelledAt: "x" }, "NEW")?.status).toBe("CANCELLED"));
   it("cancelled after voucher → keeps status with warning", () => {
-    const r = nextStatus({ ...o, cancelledAt: "x" }, "PRINTED");
-    expect(r?.status).toBe("PRINTED");
+    const r = nextStatus({ ...o, cancelledAt: "x" }, "VOUCHER");
+    expect(r?.status).toBe("VOUCHER");
     expect(r?.note).toMatch(/GT/);
   });
   it("no shipping → SKIPPED", () => expect(nextStatus({ ...o, requiresShipping: false }, null)?.status).toBe("SKIPPED"));

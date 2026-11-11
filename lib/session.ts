@@ -1,7 +1,7 @@
 import { getIronSession, type SessionOptions } from "iron-session";
 import { cookies } from "next/headers";
 
-export type SessionData = { loggedIn?: boolean; gtState?: string };
+export type SessionData = { loggedIn?: boolean };
 
 export const sessionOptions = (): SessionOptions => ({
   password: (process.env.APP_SECRET ?? "").padEnd(32, "0"),

@@ -53,8 +53,7 @@ export function CodPill({ amount }: { amount: number }) {
 
 const STATUS: Record<string, { label: string; dot: string; text: string }> = {
   NEW: { label: "Νέα", dot: "bg-terracotta", text: "text-ink" },
-  VOUCHER: { label: "Voucher", dot: "bg-forest", text: "text-forest" },
-  PRINTED: { label: "Εκτυπώθηκε", dot: "bg-sand-600", text: "text-ink-soft" },
+  VOUCHER: { label: "Εκδόθηκε", dot: "bg-forest", text: "text-forest" },
   ERROR: { label: "Σφάλμα", dot: "bg-wine", text: "text-wine" },
   CANCELLED: { label: "Ακυρώθηκε", dot: "bg-sand", text: "text-ink-soft line-through" },
   SKIPPED: { label: "Παράλειψη", dot: "bg-sand", text: "text-ink-soft" },

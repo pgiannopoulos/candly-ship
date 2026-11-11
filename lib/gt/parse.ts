@@ -18,23 +18,42 @@ export function findKey(obj: unknown, pred: (k: string) => boolean, depth = 0): 
   return undefined;
 }
 
-export const findStr = (obj: unknown, ...names: string[]): string | undefined => {
+/** First object-valued property with this name, at any depth. */
+function findKeyObj(obj: unknown, name: string, depth = 0): unknown {
+  if (!obj || typeof obj !== "object" || depth > 6) return undefined;
+  if (Array.isArray(obj)) {
+    for (const x of obj) {
+      const r = findKeyObj(x, name, depth + 1);
+      if (r !== undefined) return r;
+    }
+    return undefined;
+  }
+  const rec = obj as Record<string, unknown>;
+  if (rec[name] && typeof rec[name] === "object") return rec[name];
+  for (const v of Object.values(rec)) {
+    const r = findKeyObj(v, name, depth + 1);
+    if (r !== undefined) return r;
+  }
+  return undefined;
+}
+
+export const findStr =(obj: unknown, ...names: string[]): string | undefined => {
   const lower = names.map((n) => n.toLowerCase());
   const v = findKey(obj, (k) => lower.includes(k.toLowerCase()));
   return v === undefined ? undefined : String(v);
 };
 
-/** Pegasus error body: {"code": "...", "data": {"error": {"title": "...", "detail": "..."}}} */
+/** Hermes error body: {"code": 400, "data": {"error": {"title","detail"}}} — login errors wrap it in an array. */
 export function pegasusErrorMessage(body: unknown, status: number): string {
-  const b = body as { data?: { error?: { title?: string; detail?: string } } } | undefined;
-  const title = b?.data?.error?.title;
-  const detail = b?.data?.error?.detail;
+  const errObj = findKeyObj(body, "error") as { title?: string; detail?: string } | undefined;
+  const title = errObj?.title;
+  const detail = errObj?.detail;
   const known: Record<number, string> = {
-    400: "Μη έγκυρο αίτημα ή χωρίς δικαίωμα για αυτό το AppID",
-    401: "Μη έγκυρο token ή ο χρήστης δεν έχει δικαίωμα",
+    400: "Μη έγκυρα στοιχεία ή αποτυχία υπολογισμού κόστους",
+    401: "Μη έγκυρη σύνδεση ή χωρίς δικαίωμα",
     403: "Η αποθήκευση απέτυχε",
     404: "Η εγγραφή δεν βρέθηκε",
-    419: "Το token έληξε",
+    405: "Μη υποστηριζόμενη μέθοδος",
     500: "Σφάλμα διακομιστή GT",
   };
   return [title, detail].filter(Boolean).join(" — ") || known[status] || `HTTP ${status}`;

@@ -10,8 +10,7 @@ datasource db {
 
 enum OrderStatus {
   NEW        // waiting for a voucher
-  VOUCHER    // voucher created at GT
-  PRINTED    // label printed
+  VOUCHER    // voucher issued at GT (GT emails the carrier's voucher)
   ERROR      // last voucher attempt failed
   CANCELLED  // cancelled in Shopify
   SKIPPED    // no shipping needed / fulfilled elsewhere / skipped manually
@@ -42,6 +41,11 @@ model Order {
   /// Admin edits (typo fixes) — overrides shippingAddress when present. Never written back to Shopify.
   addressOverride   Json?
   lineItems         Json        // [{name, quantity, sku}]
+  /// GT service area chosen for the recipient postcode (make_zonearea r07p01 / r02p01)
+  gtAreaCode        String?
+  gtZoneCode        String?
+  gtAreaName        String?
+  gtAreaZip         String?     // the postcode the area was chosen for
   vouchers          Voucher[]
   createdAt         DateTime    @default(now())
   updatedAt         DateTime    @updatedAt
@@ -53,8 +57,8 @@ model Voucher {
   id          String   @id @default(cuid())
   orderId     String
   order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  gtNr01      String?  // Pegasus record id (nr01) — used for printing/updates
-  voucherNo   String?  // Voucher number (p01) printed on the label
+  gtNr01      String?  // GT internal id (nr01) — used for updates/cancel
+  voucherNo   String?  // GT voucher number (p01), e.g. V-30189490
   pieces      Int
   weightKg    Decimal  @db.Decimal(10, 3)
   codAmount   Decimal  @db.Decimal(10, 2) @default(0)
@@ -62,21 +66,21 @@ model Voucher {
   request     Json     // fields sent to GT (for audit/debug)
   response    Json?
   error       String?
-  labelPdf    Bytes?
-  printedAt   DateTime?
   cancelledAt DateTime?
   createdAt   DateTime @default(now())
 
   @@index([orderId])
 }
 
-model GtToken {
-  id           Int      @id @default(1)
-  accessToken  String   // AES-GCM encrypted
-  refreshToken String   // AES-GCM encrypted
-  connectedAt  DateTime @default(now())
-  refreshedAt  DateTime?
-  lastError    String?
+/// GT Courier Hermes API login (single row). Password and session are AES-GCM encrypted with APP_SECRET.
+model GtAccount {
+  id          Int       @id @default(1)
+  username    String
+  password    String    // encrypted
+  sid         String?   // encrypted Hermes session id
+  connectedAt DateTime  @default(now())
+  loggedInAt  DateTime?
+  lastError   String?
 }
 
 model Setting {

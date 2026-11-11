@@ -2,9 +2,11 @@ import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getSettings, setSettings, SETTING_DEFAULTS, type SettingKey } from "@/lib/settings";
-import { gtConnectionStatus } from "@/lib/gt/client";
+import { gtConnectionStatus, connectGt, disconnectGt } from "@/lib/gt/client";
 import { env } from "@/lib/env";
 import { db } from "@/lib/db";
+import { decrypt } from "@/lib/crypto";
+import { audit } from "@/lib/audit";
 import { SyncButton } from "@/components/SyncButton";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +18,7 @@ async function save(formData: FormData) {
     if (k in SETTING_DEFAULTS && typeof v === "string") patch[k as SettingKey] = v.trim();
   }
   // checkboxes: absent = off
-  for (const cb of ["gtSendSms", "useShopifyWeight"] as const) {
+  for (const cb of ["useShopifyWeight"] as const) {
     if (formData.has(`${cb}__present`)) patch[cb] = formData.get(cb) ? "1" : "0";
   }
   await setSettings(patch);
@@ -24,10 +26,32 @@ async function save(formData: FormData) {
   redirect("/settings?saved=1");
 }
 
-async function disconnectGt() {
+async function connect(formData: FormData) {
   "use server";
-  await db.gtToken.deleteMany();
-  revalidatePath("/settings");
+  const username = String(formData.get("gtUsername") ?? "").trim();
+  let password = String(formData.get("gtPassword") ?? "");
+  // Empty password = keep the stored one (e.g. re-test after GT fixed something on their side)
+  if (!password) {
+    const a = await db.gtAccount.findUnique({ where: { id: 1 } });
+    if (a && a.username === username) password = decrypt(a.password);
+  }
+  if (!username || !password) redirect("/settings?gt_error=" + encodeURIComponent("Συμπληρώστε όνομα χρήστη και κωδικό"));
+  let error: string | null = null;
+  try {
+    await connectGt(username, password);
+    await audit("gt.connected", username);
+  } catch (e) {
+    error = e instanceof Error ? e.message : String(e);
+  }
+  revalidatePath("/", "layout");
+  redirect(error ? "/settings?gt_error=" + encodeURIComponent(error) : "/settings?gt_connected=1");
+}
+
+async function disconnect() {
+  "use server";
+  await disconnectGt();
+  await audit("gt.disconnected");
+  revalidatePath("/", "layout");
 }
 
 const fmt = (d?: Date | string | null) =>
@@ -40,8 +64,6 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
     gtConnectionStatus(),
     db.auditLog.findMany({ orderBy: { at: "desc" }, take: 12 }),
   ]);
-  const missingGt = (["gtCustomerCode", "gtWorkType", "gtPrintTable"] as const).filter((k) => !s[k]);
-
   return (
     <div className="mx-auto max-w-3xl space-y-8">
       <div>
@@ -60,55 +82,58 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             <h2 className="text-lg font-bold">GT Courier</h2>
             {gt.connected ? (
               <p className="mt-1 text-sm text-forest">
-                ● Συνδεδεμένο από {fmt(gt.connectedAt)}
-                {gt.refreshedAt && <span className="text-ink-soft"> · ανανέωση {fmt(gt.refreshedAt)}</span>}
+                ● Συνδεδεμένο ως <b>{gt.username}</b> από {fmt(gt.connectedAt)}
               </p>
             ) : (
-              <p className="mt-1 text-sm text-wine">
-                ● {gt.lastError ?? "Δεν υπάρχει σύνδεση."}
-              </p>
-            )}
-            <p className="mt-2 max-w-md text-xs text-ink-soft">
-              Θα μεταφερθείτε στη σελίδα σύνδεσης του Pegasus (GT). Συνδεθείτε με τα στοιχεία του λογαριασμού σας και θα επιστρέψετε εδώ
-              αυτόματα. {env.gtMock() && <b className="text-terracotta">Λειτουργία δοκιμής (GT_MOCK=1).</b>}
-            </p>
-          </div>
-          <div className="flex shrink-0 flex-col items-end gap-2">
-            <a href="/api/gt/connect" className="rounded-xl bg-burgundy px-4 py-2 text-sm font-semibold text-cream hover:bg-burgundy-hover" data-tip="Ανοίγει τη σελίδα σύνδεσης του GT (Pegasus). Μετά τη σύνδεση επιστρέφετε εδώ αυτόματα." data-tip-align="end">
-              {gt.connected ? "Επανασύνδεση" : "Σύνδεση με GT Courier"}
-            </a>
-            {gt.connected && (
-              <form action={disconnectGt}>
-                <button className="text-xs text-ink-soft hover:text-wine" data-tip="Διαγράφει τη σύνδεση με το GT από την εφαρμογή" data-tip-align="end">Αποσύνδεση</button>
-              </form>
+              <p className="mt-1 text-sm text-wine">● {gt.lastError ?? "Δεν υπάρχει σύνδεση."}</p>
             )}
           </div>
+          {gt.username && (
+            <form action={disconnect}>
+              <button className="text-xs text-ink-soft hover:text-wine" data-tip="Διαγράφει τα στοιχεία σύνδεσης GT από την εφαρμογή" data-tip-align="end">
+                Αποσύνδεση
+              </button>
+            </form>
+          )}
         </div>
-        {missingGt.length > 0 && (
-          <p className="mt-4 rounded-xl bg-terracotta-soft px-4 py-2.5 text-xs text-terracotta">
-            Λείπουν κωδικοί από το GT ({missingGt.map((k) => LABELS[k]).join(", ")}). Ζητήστε τους από το GT Courier — δείτε το README.
-          </p>
-        )}
+        <form action={connect} className="mt-5 grid grid-cols-1 items-end gap-3 sm:grid-cols-[1fr_1fr_auto]">
+          <div>
+            <label className="label" htmlFor="gtUsername">Όνομα χρήστη API</label>
+            <input id="gtUsername" name="gtUsername" defaultValue={gt.username ?? ""} autoComplete="off" className="field" />
+          </div>
+          <div>
+            <label className="label" htmlFor="gtPassword">Κωδικός</label>
+            <input
+              id="gtPassword"
+              name="gtPassword"
+              type="password"
+              autoComplete="new-password"
+              placeholder={gt.username ? "•••••• (αποθηκευμένος)" : ""}
+              className="field"
+            />
+          </div>
+          <button className="rounded-xl bg-burgundy px-4 py-2.5 text-sm font-semibold text-cream hover:bg-burgundy-hover" data-tip="Ελέγχει τα στοιχεία με το GT και τα αποθηκεύει κρυπτογραφημένα" data-tip-align="end">
+            {gt.username ? "Επανασύνδεση" : "Σύνδεση"}
+          </button>
+        </form>
+        <p className="mt-3 text-xs text-ink-soft">
+          Τα στοιχεία του Hermes API που σας έδωσε το GT. Ο κωδικός αποθηκεύεται κρυπτογραφημένος και η εφαρμογή ξανασυνδέεται μόνη της όταν λήξει η
+          σύνδεση. {env.gtMock() && <b className="text-terracotta">Λειτουργία δοκιμής (GT_MOCK=1).</b>}
+        </p>
       </Card>
 
       <form action={save} className="space-y-8">
-        <Card title="Κωδικοί GT / Pegasus" hint="Τους δίνει το GT Courier. Χρησιμοποιούνται σε κάθε voucher.">
+        <Card title="Κωδικοί GT" hint="Όλοι προαιρετικοί — αν μείνουν κενοί, το GT χρησιμοποιεί τις προεπιλογές του λογαριασμού σας.">
           <Grid>
-            <F name="gtCustomerCode" s={s} hint="p02" />
-            <F name="gtSenderCrmCode" s={s} hint="p0100 · προαιρετικό" />
-            <F name="gtCustomerBranch" s={s} hint="p02_1 · προαιρετικό" />
-            <F name="gtWorkType" s={s} hint="p04" />
-            <F name="gtInitialStatus" s={s} hint="p014 · προαιρετικό" />
+            <F name="gtWorkType" s={s} hint="p04 · 001 = χρέωση αποστολέα" />
             <F name="gtShipmentKind" s={s} hint="p126 · 2 = Αποστολή" />
-            <F name="gtPrintTable" s={s} hint="tbl για /prints/print" />
-            <F name="gtPrintForm" s={s} hint="p85 · φόρμα 10×15" />
-            <F name="gtCancelStatus" s={s} hint="p014 ακύρωσης · κενό = μόνο τοπικά" />
-            <F name="gtTrackingUrl" s={s} hint="με {voucher}" />
+            <F name="gtCancelStatus" s={s} hint="p014 · π.χ. AKY · κενό = μόνο τοπικά" />
+            <F name="gtInitialStatus" s={s} hint="p014 · κενό = προεπιλογή GT" />
+            <F name="gtSenderCrmCode" s={s} hint="p0100 · προαιρετικό" />
           </Grid>
-          <Check name="gtSendSms" s={s} label="Ειδοποίηση παραλήπτη με SMS (pdl02)" />
         </Card>
 
-        <Card title="Αποστολέας" hint="Τυπώνονται στο voucher ως στοιχεία αποστολέα.">
+        <Card title="Αποστολέας" hint="Αφήστε κενή τη διεύθυνση ή τον ΤΚ για να χρησιμοποιηθούν τα στοιχεία του λογαριασμού GT. Αν τα συμπληρώσετε, στέλνονται σε κάθε voucher.">
           <Grid>
             <F name="senderName" s={s} />
             <F name="senderPhone" s={s} />
@@ -169,17 +194,11 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
 }
 
 const LABELS: Record<SettingKey, string> = {
-  gtCustomerCode: "Κωδικός πελάτη",
   gtSenderCrmCode: "Κωδικός CRM αποστολέα",
-  gtCustomerBranch: "Υποκατάστημα πελάτη",
   gtWorkType: "Είδος εργασίας",
   gtInitialStatus: "Αρχική κατάσταση",
   gtShipmentKind: "Είδος",
   gtCancelStatus: "Κατάσταση ακύρωσης",
-  gtPrintTable: "Πίνακας εκτύπωσης",
-  gtPrintForm: "Φόρμα εκτύπωσης",
-  gtTrackingUrl: "URL εντοπισμού",
-  gtSendSms: "SMS",
   senderName: "Επωνυμία",
   senderAddress: "Διεύθυνση",
   senderArea: "Περιοχή",

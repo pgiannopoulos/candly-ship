@@ -42,7 +42,6 @@ umask 077
   echo "SHOPIFY_CLIENT_SECRET=$SHOP_SECRET"
   echo "SHOPIFY_WEBHOOK_SECRET=$SHOP_SECRET"
   echo "GT_API_HOST=https://login.gtcourier.gr"
-  echo "GT_APPCODE="
   echo "GT_MOCK=0"
 } > .env
 chmod 600 .env
