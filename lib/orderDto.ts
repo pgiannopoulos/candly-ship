@@ -108,7 +108,7 @@ export async function listOrders(tab: Tab, q: string) {
     db.order.findMany({
       where: { ...(statuses ? { status: { in: statuses } } : {}), ...search },
       include: { vouchers: { orderBy: { createdAt: "desc" } } },
-      orderBy: { shopifyCreatedAt: tab === "new" ? "asc" : "desc" },
+      orderBy: { shopifyCreatedAt: "desc" },
       take: 300,
     }),
     db.order.groupBy({ by: ["status"], _count: true }),
