@@ -18,7 +18,7 @@ export function SyncButton() {
           setBusy(true);
           const r = await fetch("/api/sync", { method: "POST" });
           const d = await r.json();
-          setMsg(r.ok ? `${d.count} παραγγελίες${d.webhooks?.length ? " · webhooks ✓" : ""}` : d.error);
+          setMsg(r.ok ? `${d.count === 0 ? "Καμία αλλαγή" : d.count === 1 ? "1 παραγγελία ενημερώθηκε" : `${d.count} παραγγελίες ενημερώθηκαν`}${d.webhooks?.length ? " · webhooks ✓" : ""}` : d.error);
           setBusy(false);
           router.refresh();
         }}

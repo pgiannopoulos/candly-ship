@@ -117,7 +117,7 @@ export function OrdersInbox() {
     const r = await fetch("/api/sync", { method: "POST" });
     const d = (await r.json()) as { count?: number; error?: string };
     setBusy(null);
-    flash(r.ok ? { kind: "ok", text: `Συγχρονίστηκαν ${d.count} παραγγελίες` } : { kind: "err", text: d.error ?? "Αποτυχία" });
+    flash(r.ok ? { kind: "ok", text: d.count === 0 ? "Καμία αλλαγή στο Shopify" : d.count === 1 ? "1 παραγγελία ενημερώθηκε" : `${d.count} παραγγελίες ενημερώθηκαν` } : { kind: "err", text: d.error ?? "Αποτυχία" });
     load(true);
   }
 

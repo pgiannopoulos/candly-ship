@@ -14,7 +14,7 @@ export async function POST() {
     const count = await backfill();
     let webhooks: string[] = [];
     if (env.appUrl().startsWith("https://")) webhooks = await registerWebhooks(`${env.appUrl()}/api/webhooks/shopify`);
-    await audit("shopify.sync", `${count} παραγγελίες`);
+    await audit("shopify.sync", `${count} παραγγελίες ενημερώθηκαν`);
     return NextResponse.json({ ok: true, count, webhooks });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 502 });
