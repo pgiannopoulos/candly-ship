@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { getSettings } from "@/lib/settings";
 import { toDetail } from "@/lib/orderDto";
 import { audit } from "@/lib/audit";
+import { RESTORED_NOTE } from "@/lib/shopify/sync";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -69,7 +70,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
     await db.order.update({ where: { id }, data: { status: "SKIPPED", statusNote: "Παράλειψη από διαχειριστή" } });
     await audit("order.skipped", order.name, id);
   } else if (p.action === "unskip") {
-    await db.order.update({ where: { id }, data: { status: "NEW", statusNote: null } });
+    await db.order.update({ where: { id }, data: { status: "NEW", statusNote: RESTORED_NOTE } });
   }
   return NextResponse.json(await load(id));
 }

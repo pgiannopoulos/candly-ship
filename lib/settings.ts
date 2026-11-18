@@ -23,6 +23,8 @@ export const SETTING_DEFAULTS = {
   defaultWeightKg: "1",
   useShopifyWeight: "1",
   codGatewayKeywords: "cash on delivery,cod,αντικαταβολή,antikatavoli",
+  // Shopify shipping methods handled by another carrier — these orders never need a GT voucher
+  otherCarrierKeywords: "box now",
   // Sync bookkeeping
   shopifyLastSyncAt: "",
   shopifyLastWebhookAt: "",

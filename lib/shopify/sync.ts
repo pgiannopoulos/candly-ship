@@ -4,10 +4,29 @@ import { codAmountFor, detectCod } from "../cod";
 import { getSettings, setSettings } from "../settings";
 import { fetchOrder, fetchOrdersUpdatedSince, toLineItems, toShipAddress, type ShopifyOrder } from "./orders";
 
+/** statusNote set when the admin moves a skipped order back to Νέες — stops the carrier rule from re-skipping it. */
+export const RESTORED_NOTE = "Επαναφορά από διαχειριστή";
+
+const norm = (s: string) => s.toLowerCase().replace(/[\s\-_.]+/g, "");
+
+/** True when the Shopify shipping method belongs to another carrier (e.g. BOX NOW), so no GT voucher is needed. */
+export function isOtherCarrier(shippingTitle: string | null | undefined, keywordsCsv: string): boolean {
+  if (!shippingTitle) return false;
+  const title = norm(shippingTitle);
+  return keywordsCsv
+    .split(",")
+    .map(norm)
+    .filter(Boolean)
+    .some((k) => title.includes(k));
+}
+
+export const otherCarrierNote = (title: string) => `Αποστολή με ${title} — όχι GT`;
+
 /** Decide the middleware status for a Shopify order, without ever reverting our own progress. */
 export function nextStatus(
-  o: Pick<ShopifyOrder, "cancelledAt" | "requiresShipping" | "displayFulfillmentStatus" | "shippingAddress">,
+  o: Pick<ShopifyOrder, "cancelledAt" | "requiresShipping" | "displayFulfillmentStatus" | "shippingAddress" | "shippingLine">,
   current: OrderStatus | null,
+  opts: { otherCarrierKeywords?: string; restoredByAdmin?: boolean } = {},
 ): { status: OrderStatus; note: string | null } | null {
   const hasVoucher = current === "VOUCHER";
   if (o.cancelledAt) {
@@ -20,13 +39,20 @@ export function nextStatus(
   if (!o.requiresShipping || !o.shippingAddress) return { status: "SKIPPED", note: "Δεν απαιτείται αποστολή" };
   if (o.displayFulfillmentStatus === "FULFILLED" && current === null)
     return { status: "SKIPPED", note: "Ήδη εκτελεσμένη στο Shopify" };
+  if (opts.restoredByAdmin) return null; // admin wants it in Νέες — keep NEW and the restore note
+  const title = o.shippingLine?.title;
+  if (title && isOtherCarrier(title, opts.otherCarrierKeywords ?? ""))
+    return { status: "SKIPPED", note: otherCarrierNote(title) };
   return { status: "NEW", note: null };
 }
 
 export async function upsertShopifyOrder(o: ShopifyOrder) {
   const settings = await getSettings();
-  const existing = await db.order.findUnique({ where: { shopifyId: o.id }, select: { status: true } });
-  const decided = nextStatus(o, existing?.status ?? null);
+  const existing = await db.order.findUnique({ where: { shopifyId: o.id }, select: { status: true, statusNote: true } });
+  const decided = nextStatus(o, existing?.status ?? null, {
+    otherCarrierKeywords: settings.otherCarrierKeywords,
+    restoredByAdmin: existing?.status === "NEW" && existing.statusNote === RESTORED_NOTE,
+  });
 
   const total = Number(o.totalPriceSet.shopMoney.amount);
   const outstanding = Number(o.totalOutstandingSet?.shopMoney.amount ?? 0);
@@ -75,5 +101,23 @@ export async function backfill(): Promise<number> {
   const orders = await fetchOrdersUpdatedSince(since);
   for (const o of orders) await upsertShopifyOrder(o);
   await setSettings({ shopifyLastSyncAt: started });
+  await skipOtherCarrierOrders();
   return orders.length;
+}
+
+/**
+ * Move waiting orders that ship with another carrier (BOX NOW etc.) out of Νέες.
+ * Covers orders imported before the rule existed or before the keywords changed.
+ * Orders the admin restored by hand, and ERROR orders (a GT attempt was made), are left alone.
+ */
+export async function skipOtherCarrierOrders(): Promise<number> {
+  const { otherCarrierKeywords } = await getSettings();
+  const waiting = await db.order.findMany({
+    where: { status: "NEW", shippingTitle: { not: null } },
+    select: { id: true, shippingTitle: true, statusNote: true },
+  });
+  const hits = waiting.filter((o) => o.statusNote !== RESTORED_NOTE && isOtherCarrier(o.shippingTitle, otherCarrierKeywords));
+  for (const o of hits)
+    await db.order.update({ where: { id: o.id }, data: { status: "SKIPPED", statusNote: otherCarrierNote(o.shippingTitle!) } });
+  return hits.length;
 }

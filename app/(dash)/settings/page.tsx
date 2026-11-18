@@ -8,6 +8,7 @@ import { db } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
 import { audit } from "@/lib/audit";
 import { SyncButton } from "@/components/SyncButton";
+import { skipOtherCarrierOrders } from "@/lib/shopify/sync";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +23,7 @@ async function save(formData: FormData) {
     if (formData.has(`${cb}__present`)) patch[cb] = formData.get(cb) ? "1" : "0";
   }
   await setSettings(patch);
+  await skipOtherCarrierOrders();
   revalidatePath("/settings");
   redirect("/settings?saved=1");
 }
@@ -153,6 +155,9 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           <div className="mt-4">
             <F name="codGatewayKeywords" s={s} hint="λέξεις στο όνομα του τρόπου πληρωμής Shopify, χωρισμένες με κόμμα" />
           </div>
+          <div className="mt-4">
+            <F name="otherCarrierKeywords" s={s} hint="τρόποι αποστολής Shopify που δεν πάνε με GT (π.χ. BOX NOW), χωρισμένοι με κόμμα" />
+          </div>
         </Card>
 
         <div className="flex justify-end">
@@ -209,6 +214,7 @@ const LABELS: Record<SettingKey, string> = {
   defaultWeightKg: "Βάρος (kg)",
   useShopifyWeight: "Βάρος Shopify",
   codGatewayKeywords: "Λέξεις αντικαταβολής",
+  otherCarrierKeywords: "Άλλες μεταφορικές",
   shopifyLastSyncAt: "",
   shopifyLastWebhookAt: "",
 };

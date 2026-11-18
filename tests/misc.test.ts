@@ -3,7 +3,7 @@ import { createHmac } from "node:crypto";
 import { codAmountFor, detectCod } from "@/lib/cod";
 import { normalizePhone } from "@/lib/phone";
 import { verifyShopifyHmac } from "@/lib/shopify/hmac";
-import { nextStatus } from "@/lib/shopify/sync";
+import { isOtherCarrier, nextStatus } from "@/lib/shopify/sync";
 import { SETTING_DEFAULTS } from "@/lib/settings";
 
 describe("detectCod", () => {
@@ -45,7 +45,13 @@ describe("verifyShopifyHmac", () => {
 });
 
 describe("nextStatus", () => {
-  const o = { cancelledAt: null, requiresShipping: true, displayFulfillmentStatus: "UNFULFILLED", shippingAddress: {} as never };
+  const o = { cancelledAt: null, requiresShipping: true, displayFulfillmentStatus: "UNFULFILLED", shippingAddress: {} as never, shippingLine: null };
+  const kw = { otherCarrierKeywords: SETTING_DEFAULTS.otherCarrierKeywords };
+  const boxNow = { ...o, shippingLine: { title: "BOX NOW Locker" } };
+  it("BOX NOW order → SKIPPED", () => expect(nextStatus(boxNow, null, kw)?.status).toBe("SKIPPED"));
+  it("BOX NOW order already waiting → SKIPPED", () => expect(nextStatus(boxNow, "NEW", kw)?.status).toBe("SKIPPED"));
+  it("BOX NOW restored by admin stays NEW", () => expect(nextStatus(boxNow, "NEW", { ...kw, restoredByAdmin: true })).toBeNull());
+  it("GT order stays NEW", () => expect(nextStatus({ ...o, shippingLine: { title: "GT Courier" } }, null, kw)?.status).toBe("NEW"));
   it("new order → NEW", () => expect(nextStatus(o, null)?.status).toBe("NEW"));
   it("never reverts a created voucher", () => expect(nextStatus(o, "VOUCHER")).toBeNull());
   it("cancelled before voucher → CANCELLED", () => expect(nextStatus({ ...o, cancelledAt: "x" }, "NEW")?.status).toBe("CANCELLED"));
@@ -55,4 +61,16 @@ describe("nextStatus", () => {
     expect(r?.note).toMatch(/GT/);
   });
   it("no shipping → SKIPPED", () => expect(nextStatus({ ...o, requiresShipping: false }, null)?.status).toBe("SKIPPED"));
+});
+
+describe("isOtherCarrier", () => {
+  const kw = SETTING_DEFAULTS.otherCarrierKeywords;
+  it.each([
+    ["BOX NOW", true],
+    ["BoxNow Lockers", true],
+    ["Box-Now παραλαβή από locker", true],
+    ["GT Courier", false],
+    ["Courier", false],
+    [null, false],
+  ])("%s → %s", (t, r) => expect(isOtherCarrier(t, kw)).toBe(r));
 });
